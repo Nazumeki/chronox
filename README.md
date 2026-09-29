@@ -145,10 +145,58 @@ are rejected.
 Run locally with `cargo run -- <arguments>`. To check changes:
 
 ```sh
-cargo test --all-targets
-cargo clippy --all-targets -- -D warnings
+cargo test --locked --all-targets
+cargo clippy --locked --all-targets -- -D warnings
 cargo fmt --all -- --check
 ```
+
+CI runs these checks and documentation tests on Linux, Windows, and macOS
+(Apple Silicon and Intel). Dependabot checks Cargo dependencies and GitHub Actions
+weekly, grouping minor/patch Rust updates and action updates into separate PRs.
+
+### Coverage
+
+CI generates coverage with [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov).
+Each successful coverage job includes a summary and a `coverage` artifact with
+LCOV and HTML reports, retained for 14 days. Download and extract the artifact,
+then open `html/index.html` to browse coverage. No external service or token is
+required. To generate an HTML report locally:
+
+```sh
+rustup component add llvm-tools-preview
+cargo install cargo-llvm-cov --locked
+cargo llvm-cov --locked --all-targets --html
+```
+
+Open `target/llvm-cov/html/index.html`. Coverage is reported without enforcing a
+minimum percentage.
+
+### Releases
+
+Update the version in `Cargo.toml`, run `cargo check` to refresh `Cargo.lock`,
+and commit both files. Push a matching tag, for example:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The release workflow verifies the tag against the crate version and runs CI before
+building binaries. It publishes a GitHub Release with generated notes, SHA-256
+checksums (`SHA256SUMS`), and archives containing the binary, license, and READMEs:
+
+| Platform | Target | Archive |
+| --- | --- | --- |
+| Linux x86-64 (glibc, built on Ubuntu 24.04) | `x86_64-unknown-linux-gnu` | `.tar.gz` |
+| Windows x86-64 | `x86_64-pc-windows-msvc` | `.zip` |
+| macOS Apple Silicon | `aarch64-apple-darwin` | `.tar.gz` |
+| macOS Intel | `x86_64-apple-darwin` | `.tar.gz` |
+
+Prerelease versions such as `0.2.0-rc.1` produce GitHub prereleases. Publishing uses
+the built-in `GITHUB_TOKEN`; no additional secrets are needed. This workflow
+publishes binaries to GitHub Releases, not the crate to crates.io.
+
+### Source layout
 
 Parsing and formatting share a UTC instant, so input and output formats can be
 extended independently.

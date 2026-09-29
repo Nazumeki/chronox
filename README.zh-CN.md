@@ -130,10 +130,55 @@ HTTP 和 Unix 输出仍然可用。不接受闰秒、超出纳秒的精度，
 使用 `cargo run -- <arguments>` 在本地运行。检查命令：
 
 ```sh
-cargo test --all-targets
-cargo clippy --all-targets -- -D warnings
+cargo test --locked --all-targets
+cargo clippy --locked --all-targets -- -D warnings
 cargo fmt --all -- --check
 ```
+
+CI 在 Linux、Windows 和 macOS（Apple Silicon 与 Intel）上运行上述检查及文档测试。
+Dependabot 每周检查 Cargo 依赖与 GitHub Actions 更新，分别合并 Rust 的次要版本／
+补丁更新和 Actions 更新为各自的 PR。
+
+### 测试覆盖率
+
+CI 使用 [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) 生成覆盖率报告。
+每次成功的覆盖率任务都会显示摘要，并提供包含 LCOV 和 HTML 报告的 `coverage`
+构建产物，保留 14 天。下载并解压后，打开 `html/index.html` 查看详情。
+无需外部服务或令牌。在本地生成 HTML 报告：
+
+```sh
+rustup component add llvm-tools-preview
+cargo install cargo-llvm-cov --locked
+cargo llvm-cov --locked --all-targets --html
+```
+
+打开 `target/llvm-cov/html/index.html`。当前仅报告覆盖率，不设置最低百分比要求。
+
+### 发布
+
+更新 `Cargo.toml` 中的版本，运行 `cargo check` 刷新 `Cargo.lock`，提交这两个文件，
+然后推送匹配的标签，例如：
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+发布工作流会验证标签与 crate 版本一致，并在 CI 通过后构建二进制文件。
+生成的 GitHub Release 包含自动生成的发布说明、SHA-256 校验和（`SHA256SUMS`），
+以及包含可执行文件、许可证和 README 的压缩包：
+
+| 平台 | 目标 | 压缩格式 |
+| --- | --- | --- |
+| Linux x86-64（glibc，在 Ubuntu 24.04 上构建） | `x86_64-unknown-linux-gnu` | `.tar.gz` |
+| Windows x86-64 | `x86_64-pc-windows-msvc` | `.zip` |
+| macOS Apple Silicon | `aarch64-apple-darwin` | `.tar.gz` |
+| macOS Intel | `x86_64-apple-darwin` | `.tar.gz` |
+
+`0.2.0-rc.1` 等预发布版本会生成 GitHub 预发布版本。发布使用内置的 `GITHUB_TOKEN`，
+无需额外配置密钥。此工作流将二进制文件发布到 GitHub Releases，不向 crates.io 发布 crate。
+
+### 源码结构
 
 解析与格式化共用一个 UTC 时刻，因此输入格式和输出格式可以独立扩展。
 
