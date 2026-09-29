@@ -39,7 +39,7 @@ fn detects_all_timestamp_scales_without_floating_point_loss() {
             "Unix timestamp (s)",
         ),
     ] {
-        let parsed = parse(input, None).unwrap();
+        let parsed = parse(input, None, None).unwrap();
         assert_eq!(parsed.datetime, utc(expected), "{input}");
         assert_eq!(parsed.format, label);
     }
@@ -63,7 +63,7 @@ fn recognizes_datetime_families_and_normalizes_offsets() {
         "Tue Jan  2 03:04:05 2024",
     ] {
         assert_eq!(
-            parse(input, None).unwrap().datetime,
+            parse(input, None, None).unwrap().datetime,
             utc("2024-01-02T03:04:05Z"),
             "{input}"
         );
@@ -73,18 +73,18 @@ fn recognizes_datetime_families_and_normalizes_offsets() {
 #[test]
 fn missing_timezones_use_system_local_time() {
     assert_eq!(
-        parse("2024-01-02T03:04Z", None).unwrap().datetime,
+        parse("2024-01-02T03:04Z", None, None).unwrap().datetime,
         utc("2024-01-02T03:04:00Z")
     );
     assert_eq!(
-        parse("2024-01-02 03:04", None).unwrap().datetime,
+        parse("2024-01-02 03:04", None, None).unwrap().datetime,
         Local
             .with_ymd_and_hms(2024, 1, 2, 3, 4, 0)
             .unwrap()
             .to_utc()
     );
     for input in ["2024-01-02", "2024/01/02", "2024-002", "2024-W01-2"] {
-        let parsed = parse(input, None).unwrap();
+        let parsed = parse(input, None, None).unwrap();
         assert!(matches!(parsed.timezone, chronox::timezone::Zone::Local));
         assert_eq!(
             parsed.datetime,
@@ -100,7 +100,7 @@ fn missing_timezones_use_system_local_time() {
         "2024/01/02 03:04:05",
     ] {
         assert_eq!(
-            parse(input, None).unwrap().datetime,
+            parse(input, None, None).unwrap().datetime,
             Local
                 .with_ymd_and_hms(2024, 1, 2, 3, 4, 5)
                 .unwrap()
@@ -120,11 +120,11 @@ fn negative_fractions_and_explicit_units_are_exact() {
         ("1.001", Unit::Microseconds, 1_001),
         ("0", Unit::Seconds, 0),
     ] {
-        assert_eq!(parse(input, Some(unit)).unwrap().nanos(), nanos);
+        assert_eq!(parse(input, Some(unit), None).unwrap().nanos(), nanos);
     }
-    let parsed = parse("-1", Some(Unit::Nanoseconds)).unwrap();
+    let parsed = parse("-1", Some(Unit::Nanoseconds), None).unwrap();
     assert_eq!(
-        parse(&Format::Iso8601.value(&parsed), None)
+        parse(&Format::Iso8601.value(&parsed), None, None)
             .unwrap()
             .datetime,
         utc("1969-12-31T23:59:59.999999999Z")
@@ -147,11 +147,11 @@ fn every_input_can_render_every_output() {
         (Format::Email, "Tue, 2 Jan 2024 03:04:05 +0000"),
     ];
     for (_, input) in cases {
-        let parsed = parse(input, None).unwrap();
+        let parsed = parse(input, None, None).unwrap();
         for (target, expected) in cases {
             let value = target.value(&parsed);
             if matches!(target, Format::Readable | Format::Iso8601 | Format::Email) {
-                let reparsed = parse(&value, None).unwrap();
+                let reparsed = parse(&value, None, None).unwrap();
                 assert_eq!(reparsed.datetime, parsed.datetime, "{input} -> {value}");
                 assert_eq!(
                     reparsed.timezone.at(reparsed.datetime).offset(),
@@ -174,7 +174,7 @@ fn default_output_depends_on_input_kind() {
         "-0.1",
     ] {
         assert_eq!(
-            Format::default_for(&parse(input, None).unwrap()),
+            Format::default_for(&parse(input, None, None).unwrap()),
             Format::Readable
         );
     }
@@ -184,7 +184,7 @@ fn default_output_depends_on_input_kind() {
         "Tue, 02 Jan 2024 03:04:05 GMT",
     ] {
         assert_eq!(
-            Format::default_for(&parse(input, None).unwrap()),
+            Format::default_for(&parse(input, None, None).unwrap()),
             Format::Seconds
         );
     }
@@ -201,24 +201,24 @@ fn named_timezones_and_offsets_identify_the_same_instant() {
         "2024-01-01 22:04:05 America/New_York",
     ] {
         assert_eq!(
-            parse(input, None).unwrap().datetime,
+            parse(input, None, None).unwrap().datetime,
             utc("2024-01-02T03:04:05Z"),
             "{input}"
         );
     }
-    let parsed = parse("2024-01-02T11:04:05.123456789+08:00", None).unwrap();
+    let parsed = parse("2024-01-02T11:04:05.123456789+08:00", None, None).unwrap();
     assert_eq!(parsed.timezone.label(parsed.datetime), "UTC+08:00");
     assert_eq!(
         Format::Readable.value(&parsed),
         "2024-01-02 11:04:05.123456789 +08:00"
     );
-    let summer = parse("2024-07-02 12:00:00 America/New_York", None).unwrap();
+    let summer = parse("2024-07-02 12:00:00 America/New_York", None, None).unwrap();
     assert_eq!(
         Format::Readable.value(&summer),
         "2024-07-02 12:00:00 -04:00"
     );
     assert!(summer.timezone.label(summer.datetime).contains("-04:00"));
-    let winter = parse("2024-01-02 12:00:00 America/New_York", None).unwrap();
+    let winter = parse("2024-01-02 12:00:00 America/New_York", None, None).unwrap();
     assert_eq!(
         Format::Readable.value(&winter),
         "2024-01-02 12:00:00 -05:00"
@@ -260,7 +260,7 @@ fn datetime_outputs_preserve_offsets_and_http_stays_gmt() {
             "Tue, 2 Jan 2024 03:04:05 +0000",
         ),
     ] {
-        let parsed = parse(input, None).unwrap();
+        let parsed = parse(input, None, None).unwrap();
         assert_eq!(Format::Readable.value(&parsed), readable);
         assert_eq!(Format::Iso8601.value(&parsed), iso);
         assert_eq!(Format::Email.value(&parsed), email);
@@ -276,11 +276,11 @@ fn copied_datetimes_preserve_precision_and_dst_fold_identity() {
         "2024-11-03T01:30:00-04:00 America/New_York",
         "2024-11-03T01:30:00-05:00 America/New_York",
     ] {
-        let parsed = parse(input, None).unwrap();
+        let parsed = parse(input, None, None).unwrap();
         for format in [Format::Readable, Format::Iso8601] {
             let output = format.value(&parsed);
             assert_eq!(
-                parse(&output, None).unwrap().nanos(),
+                parse(&output, None, None).unwrap().nanos(),
                 parsed.nanos(),
                 "{output}"
             );
@@ -290,24 +290,28 @@ fn copied_datetimes_preserve_precision_and_dst_fold_identity() {
 
 #[test]
 fn historical_offsets_are_not_silently_rounded() {
-    let parsed = parse("1900-01-02 12:00:00 Asia/Singapore", None).unwrap();
+    let parsed = parse("1900-01-02 12:00:00 Asia/Singapore", None, None).unwrap();
     for format in [Format::Readable, Format::Iso8601, Format::Email] {
         assert!(format.value(&parsed).contains("offset includes seconds"));
     }
     assert!(Format::Http.value(&parsed).ends_with("GMT"));
     assert_eq!(
-        parse(&Format::Nanoseconds.value(&parsed), Some(Unit::Nanoseconds))
-            .unwrap()
-            .datetime,
+        parse(
+            &Format::Nanoseconds.value(&parsed),
+            Some(Unit::Nanoseconds),
+            None
+        )
+        .unwrap()
+        .datetime,
         parsed.datetime
     );
 }
 
 #[test]
 fn email_year_limits_follow_the_display_timezone() {
-    let before = parse("1899-12-31T23:30:00-01:00", None).unwrap();
+    let before = parse("1899-12-31T23:30:00-01:00", None, None).unwrap();
     assert!(Format::Email.value(&before).starts_with("unavailable"));
-    let after = parse("1900-01-01T00:30:00+01:00", None).unwrap();
+    let after = parse("1900-01-01T00:30:00+01:00", None, None).unwrap();
     assert_eq!(
         Format::Email.value(&after),
         "Mon, 1 Jan 1900 00:30:00 +0100"
@@ -322,21 +326,26 @@ fn timezone_transitions_and_conflicts_are_not_guessed() {
         ("2024-01-02T11:04:05+00:00 Asia/Singapore", "conflicts"),
         ("2024-01-02 11:04:05 Asia/Unknown", "unknown timezone"),
     ] {
-        assert!(parse(input, None).unwrap_err().contains(error), "{input}");
+        assert!(
+            parse(input, None, None).unwrap_err().contains(error),
+            "{input}"
+        );
     }
-    let first = parse("2024-11-03T01:30:00-04:00 America/New_York", None).unwrap();
-    let second = parse("2024-11-03T01:30:00-05:00 America/New_York", None).unwrap();
+    let first = parse("2024-11-03T01:30:00-04:00 America/New_York", None, None).unwrap();
+    let second = parse("2024-11-03T01:30:00-05:00 America/New_York", None, None).unwrap();
     assert_eq!((second.datetime - first.datetime).num_seconds(), 3600);
-    assert!(parse("2024-01-02 03:04:05 CST", None).is_err());
+    assert!(parse("2024-01-02 03:04:05 CST", None, None).is_err());
 }
 
 #[test]
 fn dates_outside_i64_nanoseconds_still_render() {
     for input in ["0001-01-01T00:00:00Z", "9999-12-31T23:59:59.999999999Z"] {
-        let parsed = parse(input, None).unwrap();
+        let parsed = parse(input, None, None).unwrap();
         let nanos = Format::Nanoseconds.value(&parsed);
         assert_eq!(
-            parse(&nanos, Some(Unit::Nanoseconds)).unwrap().datetime,
+            parse(&nanos, Some(Unit::Nanoseconds), None)
+                .unwrap()
+                .datetime,
             parsed.datetime
         );
         for format in Format::value_variants() {
@@ -366,8 +375,8 @@ fn rejects_invalid_ambiguous_and_unrepresentable_values() {
         "0000-01-01T00:00:00Z",
         "2024-01-02\n2024-01-03",
     ] {
-        assert!(parse(input, None).is_err(), "accepted {input:?}");
+        assert!(parse(input, None, None).is_err(), "accepted {input:?}");
     }
-    assert!(parse("2024-01-02", Some(Unit::Seconds)).is_err());
-    assert!(parse("0.1", Some(Unit::Nanoseconds)).is_err());
+    assert!(parse("2024-01-02", Some(Unit::Seconds), None).is_err());
+    assert!(parse("0.1", Some(Unit::Nanoseconds), None).is_err());
 }

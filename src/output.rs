@@ -4,6 +4,7 @@ use chrono::{Datelike, SecondsFormat};
 use clap::ValueEnum;
 
 use crate::parse::{InputKind, Parsed};
+use crate::style::{HEADING, LABEL, MUTED, VALUE, WARNING};
 
 /// Every output format accepts the same normalized instant, regardless of input.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -116,7 +117,7 @@ pub fn render(parsed: &Parsed, target: Format, all: bool) -> String {
         .max()
         .unwrap_or(0)
         .max("Timezone".len());
-    let mut output = String::from("\x1b[1;36mchronox\x1b[0m  \x1b[2m/ time, translated\x1b[0m\n\n");
+    let mut output = format!("{HEADING}chronox{HEADING:#}  {MUTED}time, translated{MUTED:#}\n\n");
     row(&mut output, "Detected", parsed.format, width);
     row(
         &mut output,
@@ -132,19 +133,23 @@ pub fn render(parsed: &Parsed, target: Format, all: bool) -> String {
     } else {
         std::slice::from_ref(&target)
     };
+    let heading = if all { "All formats" } else { "Result" };
+    writeln!(output, "{HEADING}{heading}{HEADING:#}").expect("writing to a String cannot fail");
     for format in formats {
-        row(&mut output, format.label(), &format.value(parsed), width);
+        let label = format!("{:<width$}", format.label());
+        let value = format.value(parsed);
+        writeln!(output, "  {LABEL}{label}{LABEL:#}  {VALUE}{value}{VALUE:#}")
+            .expect("writing to a String cannot fail");
     }
     if formats.iter().any(|format| format.loses_precision(parsed)) {
-        output.push_str(
-            "\n\x1b[2mInteger timestamps round down; HTTP / email dates omit fractions.\x1b[0m\n",
-        );
+        writeln!(output, "\n{WARNING}Note:{WARNING:#} Integer timestamps round down; HTTP / email dates omit fractions.")
+            .expect("writing to a String cannot fail");
     }
     output
 }
 
 fn row(output: &mut String, label: &str, value: &str, width: usize) {
     let label = format!("{label:<width$}");
-    writeln!(output, "  \x1b[2m{label}\x1b[0m \x1b[1m{value}\x1b[0m")
+    writeln!(output, "  {MUTED}{label}{MUTED:#}  {value}")
         .expect("writing to a String cannot fail");
 }

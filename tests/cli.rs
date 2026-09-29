@@ -110,9 +110,132 @@ fn all_formats_and_negative_arguments_work() {
 }
 
 #[test]
+fn timezone_long_and_short_options_select_output_zone() {
+    for args in [
+        vec!["1704164645", "--timezone", "America/New_York"],
+        vec!["1704164645", "-z", "America/New_York"],
+        vec!["-z=America/New_York", "1704164645"],
+        vec!["1704164645", "-z", "-05:00"],
+        vec!["1704164645", "-z=-0500"],
+        vec!["--timezone=-05:00", "1704164645"],
+    ] {
+        let output = run(&args);
+        assert!(output.status.success(), "{args:?}: {:?}", output.stderr);
+        assert!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .contains("2024-01-01 22:04:05 -05:00")
+        );
+    }
+    for zone in ["UTC", "utc", "GMT", "Z"] {
+        let output = run(&["1704164645", "-z", zone]);
+        assert!(output.status.success());
+        assert!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .contains("2024-01-02 03:04:05 +00:00")
+        );
+    }
+    let output = run(&["1704164645", "-z", "local"]);
+    assert!(output.status.success());
+    assert!(
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .contains("Local (UTC")
+    );
+}
+
+#[test]
+fn target_timezone_does_not_reinterpret_explicit_input_zones() {
+    for input in [
+        "2024-01-02T11:04:05+08:00",
+        "2024-01-02 11:04:05 Asia/Singapore",
+        "Tue, 02 Jan 2024 11:04:05 +0800",
+        "Tue, 02 Jan 2024 03:04:05 GMT",
+    ] {
+        let output = run(&[input, "-z", "America/New_York", "-a"]);
+        assert!(output.status.success(), "{input}: {:?}", output.stderr);
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        for expected in [
+            "America/New_York (UTC-05:00)",
+            "1704164645",
+            "2024-01-01 22:04:05 -05:00",
+            "2024-01-01T22:04:05-05:00",
+            "Mon, 1 Jan 2024 22:04:05 -0500",
+            "Tue, 02 Jan 2024 03:04:05 GMT",
+        ] {
+            assert!(stdout.contains(expected), "missing {expected}");
+        }
+    }
+}
+
+#[test]
+fn target_timezone_interprets_naive_dates_and_applies_dst_rules() {
+    for (input, zone, expected) in [
+        ("2024-01-02 11:04:05", "Asia/Singapore", "1704164645"),
+        ("2024-01-02 08:49:05", "+05:45", "1704164645"),
+        ("2024-01-02", "UTC", "1704153600"),
+    ] {
+        let output = run(&[input, "-z", zone]);
+        assert!(output.status.success());
+        assert!(String::from_utf8(output.stdout).unwrap().contains(expected));
+    }
+    for (input, expected) in [
+        ("2024-01-02T17:00:00Z", "2024-01-02 12:00:00 -05:00"),
+        ("2024-07-02T16:00:00Z", "2024-07-02 12:00:00 -04:00"),
+    ] {
+        let output = run(&[input, "-z", "America/New_York", "--to", "readable"]);
+        assert!(output.status.success());
+        assert!(String::from_utf8(output.stdout).unwrap().contains(expected));
+    }
+    for input in ["2024-11-03 01:30:00", "2024-03-10 02:30:00"] {
+        assert_eq!(
+            run(&[input, "-z", "America/New_York"]).status.code(),
+            Some(2)
+        );
+    }
+    let output = run(&["2024-11-03T01:30:00-04:00", "-z", "UTC", "--to", "iso8601"]);
+    assert!(output.status.success());
+    assert!(
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .contains("2024-11-03T05:30:00Z")
+    );
+}
+
+#[test]
+fn invalid_timezone_arguments_fail_without_accepting_partial_offsets() {
+    for zone in [
+        "Asia/Unknown",
+        "CST",
+        "+24:00",
+        "-25:00",
+        "+08:60",
+        "+08:00junk",
+        "+08:00:00",
+        "0800",
+        "+8:00",
+        "",
+    ] {
+        let output = run(&["1704164645", "-z", zone]);
+        assert_eq!(output.status.code(), Some(2), "accepted {zone:?}");
+        assert!(output.stdout.is_empty());
+    }
+    let output = run(&["1704164645", "-z"]);
+    assert_eq!(output.status.code(), Some(2));
+    let output = run(&["--", "-z"]);
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .contains("unrecognized or invalid date")
+    );
+}
+
+#[test]
 fn stdin_is_supported() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_chronox"))
-        .args(["--to", "nanoseconds"])
+        .args(["--to", "readable", "-z", "+05:45"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -128,7 +251,7 @@ fn stdin_is_supported() {
     assert!(
         String::from_utf8(output.stdout)
             .unwrap()
-            .contains("1704164645123456789")
+            .contains("2024-01-02 08:49:05.123456789 +05:45")
     );
 }
 
@@ -142,6 +265,9 @@ fn invalid_inputs_and_conflicting_flags_fail_cleanly() {
         vec!["0", "--to", "human"],
         vec!["0", "--to", "database"],
         vec!["0", "--to", "sql"],
+        vec!["-V"],
+        vec!["1704164645", "-tz", "UTC"],
+        vec!["1704164645", "-tz=UTC"],
     ] {
         let output = run(&args);
         assert_eq!(output.status.code(), Some(2), "{args:?}");
@@ -152,7 +278,7 @@ fn invalid_inputs_and_conflicting_flags_fail_cleanly() {
 
 #[test]
 fn help_and_version_are_available() {
-    for arg in ["--help", "--version"] {
+    for arg in ["--help", "--version", "-v"] {
         let output = run(&[arg]);
         assert!(output.status.success());
         assert!(

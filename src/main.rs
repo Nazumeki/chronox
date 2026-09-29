@@ -1,33 +1,67 @@
 use std::io::{self, IsTerminal, Read, Write};
 use std::process::ExitCode;
 
+use chronox::style::{self, ERROR, HEADING, MUTED};
+use chronox::timezone::Zone;
 use chronox::{output, parse};
 use clap::{CommandFactory, Parser};
 use output::Format;
 use parse::Unit;
 
-/// Recognize timestamps and dates, and convert them instantly.
 #[derive(Parser)]
 #[command(
     version,
-    after_help = "EXAMPLES:\n  chronox 1704164645\n  chronox -a 1704164645123456789\n  chronox \"2024-01-02 03:04:05\"\n  chronox --unit ms -- -1\n  echo 1704164645 | chronox -a\n\nDefaults: datetime -> Unix timestamp (s); timestamp -> human-readable local datetime.\nDates without a timezone use the system timezone; explicit offsets or IANA names win. Numeric unit detection is a heuristic;\nuse --unit for ambiguous values. Quote dates containing spaces."
+    styles = style::help(),
+    disable_help_flag = true,
+    disable_version_flag = true,
+    about = "Convert timestamps and dates with automatic format detection.\nDefault output: timestamp to local datetime; date to Unix seconds.",
+    before_help = format!("{HEADING}chronox{HEADING:#}  {MUTED}{}{MUTED:#}", env!("CARGO_PKG_VERSION")),
+    help_template = "{before-help}{about}\n\n{usage-heading} {usage}\n\n{all-args}"
 )]
 struct Cli {
-    /// Timestamp or date string (reads standard input if omitted)
-    #[arg(allow_hyphen_values = true)]
+    #[arg(
+        allow_negative_numbers = true,
+        help = "Timestamp or date string. Quote dates that contain spaces.\nOmit to read one value from stdin."
+    )]
     input: Option<String>,
 
-    /// Render all supported output formats
-    #[arg(short = 'a', long)]
+    #[arg(short = 'a', long, help = "Show all timestamp and date formats.\n")]
     all: bool,
 
-    /// Choose an output format, independent of the recognized input
-    #[arg(short, long, value_enum, conflicts_with = "all")]
+    #[arg(
+        short,
+        long,
+        value_enum,
+        value_name = "FORMAT",
+        hide_possible_values = true,
+        conflicts_with = "all",
+        help = "Choose the output format; overrides the default.\nUse s, ms, us, ns, readable, iso8601, http, or email.\nCannot be combined with --all.\n"
+    )]
     to: Option<Format>,
 
-    /// Override the detected numeric timestamp unit
-    #[arg(short, long, value_enum)]
+    #[arg(
+        short,
+        long,
+        value_enum,
+        hide_possible_values = true,
+        help = "Override the detected unit for numeric input.\ns = seconds, ms = milliseconds,\nus = microseconds, ns = nanoseconds.\n"
+    )]
     unit: Option<Unit>,
+
+    #[arg(
+        short = 'z',
+        long,
+        value_name = "ZONE",
+        allow_hyphen_values = true,
+        help = "Set the timezone for output and dates without a zone.\nUse an IANA name, UTC, local, or +/-HH:MM.\nDefault: input timezone, otherwise system timezone.\nHTTP dates always use GMT.\n"
+    )]
+    timezone: Option<Zone>,
+
+    #[arg(short = 'h', long, action = clap::ArgAction::Help, help = "Print help\n")]
+    help: Option<bool>,
+
+    #[arg(short = 'v', long, action = clap::ArgAction::Version, help = "Print version")]
+    version: Option<bool>,
 }
 
 fn main() -> ExitCode {
@@ -38,7 +72,7 @@ fn main() -> ExitCode {
         Err(error) if error.kind() == io::ErrorKind::BrokenPipe => ExitCode::SUCCESS,
         Err(error) => {
             let mut stderr = anstream::AutoStream::auto(io::stderr());
-            let _ = writeln!(stderr, "\x1b[1;31merror:\x1b[0m {error}");
+            let _ = writeln!(stderr, "{ERROR}error:{ERROR:#} {error}");
             ExitCode::from(2)
         }
     }
@@ -57,7 +91,7 @@ fn run(cli: Cli) -> io::Result<()> {
             input
         }
     };
-    let parsed = parse::parse(&input, cli.unit)
+    let parsed = parse::parse(&input, cli.unit, cli.timezone)
         .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
     let mut stdout = anstream::AutoStream::auto(io::stdout());
     write!(

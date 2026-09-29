@@ -62,7 +62,17 @@ impl Parsed {
     }
 }
 
-pub fn parse(input: &str, unit: Option<Unit>) -> Result<Parsed, String> {
+/// Select a display timezone and use it for inputs without their own timezone.
+/// Explicit input timezones always determine the instant before display conversion.
+pub fn parse(input: &str, unit: Option<Unit>, target_zone: Option<Zone>) -> Result<Parsed, String> {
+    let mut parsed = recognize(input, unit, target_zone.unwrap_or(Zone::Local))?;
+    if let Some(zone) = target_zone {
+        parsed.timezone = zone;
+    }
+    Ok(parsed)
+}
+
+fn recognize(input: &str, unit: Option<Unit>, default_zone: Zone) -> Result<Parsed, String> {
     let input = input.trim();
     if input.is_empty() {
         return Err("provide a timestamp or date, as an argument or through standard input".into());
@@ -93,7 +103,7 @@ pub fn parse(input: &str, unit: Option<Unit>) -> Result<Parsed, String> {
         return result;
     }
     let (input, named_zone) = timezone::split_named(input)?;
-    let zone = named_zone.unwrap_or(Zone::Local);
+    let zone = named_zone.unwrap_or(default_zone);
     for recognize in RECOGNIZERS {
         if let Some(result) = recognize(input, zone) {
             let result = result.and_then(|mut parsed| {

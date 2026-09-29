@@ -2,4 +2,5 @@
 //! Add recognizers in `parse` and output formats in `output` independently.
 pub mod output;
 pub mod parse;
+pub mod style;
 pub mod timezone;

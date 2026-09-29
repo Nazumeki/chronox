@@ -1,5 +1,6 @@
 use chrono::{DateTime, FixedOffset, Local, LocalResult, NaiveDateTime, TimeZone, Utc};
 use chrono_tz::Tz;
+use std::str::FromStr;
 
 /// The timezone used to interpret a wall-clock time and display an instant.
 #[derive(Clone, Copy, Debug)]
@@ -7,6 +8,47 @@ pub enum Zone {
     Local,
     Named(Tz),
     Fixed(FixedOffset),
+}
+
+impl FromStr for Zone {
+    type Err = String;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        if input.eq_ignore_ascii_case("local") {
+            return Ok(Self::Local);
+        }
+        if ["utc", "gmt", "z"]
+            .iter()
+            .any(|name| input.eq_ignore_ascii_case(name))
+        {
+            return Ok(Self::Named(chrono_tz::UTC));
+        }
+        if input.starts_with(['+', '-']) {
+            // FixedOffset's parser accepts trailing text; validate the entire
+            // argument's shape before using it to validate hours and minutes.
+            let bytes = input.as_bytes();
+            let valid = match bytes.len() {
+                5 => bytes[1..].iter().all(u8::is_ascii_digit),
+                6 => {
+                    bytes[3] == b':'
+                        && bytes[1..3]
+                            .iter()
+                            .chain(&bytes[4..])
+                            .all(u8::is_ascii_digit)
+                }
+                _ => false,
+            };
+            if valid && let Ok(offset) = input.parse::<FixedOffset>() {
+                return Ok(Self::Fixed(offset));
+            }
+            return Err(
+                "invalid UTC offset; use +HH:MM or -HH:MM (hours 00–23, minutes 00–59)".into(),
+            );
+        }
+        input.parse::<Tz>().map(Self::Named).map_err(|_| {
+            format!("unknown timezone {input:?}; use an IANA name, UTC, local, or an offset such as +08:00")
+        })
+    }
 }
 
 impl Zone {

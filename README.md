@@ -1,156 +1,148 @@
 # chronox
 
-Recognize a timestamp or date string and render it in your chosen format. Built in
-Rust with colored terminal output, automatic detection, and nanosecond precision.
-Every recognized input can produce any output format through a shared UTC instant.
+English | [简体中文](README.zh-CN.md)
 
-## Install
+A command-line tool written in Rust for converting Unix timestamps and date
+strings. It detects input formats and supports nanosecond precision.
 
-Install a current stable Rust toolchain, then run from this repository:
+## Installation
+
+With a current stable Rust toolchain installed, run from the repository root:
 
 ```sh
 cargo install --path . --locked
 ```
 
-Or use `cargo run -- <arguments>` while developing.
-
 ## Usage
 
 ```sh
-chronox 1704164645123456789
-chronox -a "2024-01-02 03:04:05.123456789"
-chronox "Tue, 02 Jan 2024 11:04:05 +0800" --to milliseconds
-chronox 1704164645 --to http
-chronox --unit ns -- -1
-echo 1704164645 | chronox -a
+chronox 1704164645
+chronox "2024-01-02T03:04:05Z" --to milliseconds
+chronox -a 1704164645123456789
+echo 1704164645 | chronox -z UTC
 ```
 
-The default output adapts to the recognized input:
+By default, timestamps produce a readable datetime in the system timezone, and
+date strings produce an integer Unix timestamp in seconds. Quote inputs that
+contain spaces. If no argument is supplied, chronox reads one value from stdin
+and ignores surrounding whitespace.
 
-- Datetime input produces an integer Unix timestamp in **seconds**.
-- Timestamp input produces a **readable datetime in your system timezone**:
-  `YYYY-MM-DD HH:mm:ss +HH:mm`, with fractional seconds when present. Each value
-  includes its UTC offset, and the timezone row identifies the detected timezone.
-
-For example, on a system in Asia/Singapore, `chronox 1704164645` produces
-`2024-01-02 11:04:05 +08:00`. Both `chronox "2024-01-02 11:04:05"` and
-`chronox "2024-01-02T11:04:05+08:00"` produce `1704164645` on that system.
-
-Use `-t, --to` to select an output, or `-a, --all` to render all eight formats.
-These options are mutually exclusive. Quote input containing spaces; stdin accepts
-one value, with surrounding whitespace ignored.
-
-Example on a system in Asia/Singapore: `chronox -a 1704164645123456789`
-
-```text
-chronox  / time, translated
-
-  Detected            Unix timestamp (ns)
-  Timezone            Local (UTC+08:00)
-
-  Unix timestamp (s)  1704164645
-  Unix timestamp (ms) 1704164645123
-  Unix timestamp (us) 1704164645123456
-  Unix timestamp (ns) 1704164645123456789
-  Readable datetime   2024-01-02 11:04:05.123456789 +08:00
-  ISO datetime        2024-01-02T11:04:05.123456789+08:00
-  HTTP date           Tue, 02 Jan 2024 03:04:05 GMT
-  Email date          Tue, 2 Jan 2024 11:04:05 +0800
-
-Integer timestamps round down; HTTP / email dates omit fractions.
-```
-
-Color adapts to the terminal and respects `NO_COLOR`. Redirected output is plain
-text. Invalid input produces an error on stderr and exit code 2.
-
-## Formats
-
-| Input family | Examples |
+| Option | Description |
 | --- | --- |
-| Unix timestamp (s) | `1704164645`, `1704164645.123456789` |
-| Unix timestamp (ms) | `1704164645123` |
-| Unix timestamp (us) | `1704164645123456` |
-| Unix timestamp (ns) | `1704164645123456789` |
+| `-t, --to FORMAT` | Select an output format from the table below. |
+| `-a, --all` | Show all eight output formats. Cannot be combined with `--to`. |
+| `-u, --unit UNIT` | Set the unit for numeric input: `s`, `ms`, `us`, or `ns`, or the corresponding full name. |
+| `-z, --timezone ZONE` | Set the output timezone and the timezone used to interpret dates without one. |
+| `-h, --help` | Show help. |
+| `-v, --version` | Show the version. |
+
+Output includes the detected input format and display timezone. Color follows
+terminal settings and respects `NO_COLOR`; redirected output is plain text.
+Invalid input produces an error on stderr and exit code 2.
+
+## Supported formats
+
+### Input
+
+| Format | Examples |
+| --- | --- |
+| Unix timestamp | `1704164645`, `1704164645.123456789` |
 | ISO datetime | `2024-01-02T03:04:05Z`, `2024-01-02T11:04:05+08:00` |
-| ISO basic, ordinal, week dates | `20240102T030405Z`, `2024-002T03:04:05Z`, `2024-W01-2T03:04:05Z` |
-| Readable datetime | `2024-01-02 03:04:05.123456`, `2024/01/02 03:04:05`, `2024-01-02 11:04:05+08` |
-| HTTP date | `Tue, 02 Jan 2024 03:04:05 GMT`, `Tuesday, 02-Jan-24 03:04:05 GMT`, `Tue Jan  2 03:04:05 2024` |
+| ISO basic datetime | `20240102T030405Z` |
+| ISO ordinal or week datetime | `2024-002T03:04:05Z`, `2024-W01-2T03:04:05Z` |
+| Readable datetime | `2024-01-02 03:04:05.123456`, `2024/01/02 03:04:05` |
+| HTTP date | `Tue, 02 Jan 2024 03:04:05 GMT` |
 | Email date | `Tue, 02 Jan 2024 11:04:05 +0800` |
 | Date only | `2024-01-02`, `2024/01/02`, `2024-002`, `2024-W01-2` |
 
-ISO calendar and readable datetimes also accept hours and minutes without seconds.
-Fractions support up to nine digits. Dates without a timezone use the system's local
-timezone at the supplied date; date-only inputs use local midnight. Unix timestamps
-always represent instants since the UTC epoch; timezone detection affects datetime
-display, not the timestamp value.
-Header inputs are the date values, without the `Date:` field name.
+Timestamps accept seconds, milliseconds, microseconds, and nanoseconds; see
+[unit detection](#units-and-precision). ISO calendar and hyphen-separated readable
+datetimes also accept hours and minutes without seconds. Date-only inputs use
+midnight in the applicable timezone.
 
-### Automatic timezone recognition
+HTTP input also accepts the older RFC 850 and asctime forms. HTTP and email inputs
+must contain only the date value, without the `Date:` field name.
 
-Explicit numeric offsets, `Z`, and standard HTTP/email timezone fields are recognized.
-Datetime input also accepts a trailing `UTC`, `GMT`, or IANA timezone name:
+### Output
+
+| Format | `--to` value | Alias |
+| --- | --- | --- |
+| Unix seconds | `seconds` | `s` |
+| Unix milliseconds | `milliseconds` | `ms` |
+| Unix microseconds | `microseconds` | `us` |
+| Unix nanoseconds | `nanoseconds` | `ns` |
+| Readable datetime | `readable` | — |
+| ISO datetime | `iso8601` | `rfc3339` |
+| HTTP date | `http` | — |
+| Email date | `email` | `rfc2822` |
+
+Readable output uses `YYYY-MM-DD HH:mm:ss +HH:mm`, with fractional seconds when
+present. ISO output uses RFC 3339. Readable, ISO, and email output include a UTC
+offset; ISO uses `Z` for UTC. HTTP output always uses GMT.
+
+## Timezones
+
+Input can specify a numeric offset, `Z`, a standard HTTP/email timezone field,
+or a trailing `UTC`, `GMT`, or IANA name such as `Asia/Singapore`.
+
+Use `-z, --timezone` to select an IANA name, `UTC` (also `GMT` or `Z`), `local`,
+or a fixed offset such as `+08:00`, `-05:00`, or `+0545`.
 
 ```sh
-chronox "2024-01-02 11:04:05 Asia/Singapore"
-chronox "2024-07-02 12:00:00 America/New_York"
-chronox "2024-01-02 03:04:05 UTC"
+chronox "2024-01-02 11:04:05 Asia/Singapore" -z UTC --to iso8601
+chronox 1704164645 -z=-05:00
 ```
 
-Readable, ISO, and email output preserve an explicit input timezone, or use the
-system timezone when none is supplied. Each output includes an offset: `+08:00`
-for readable and ISO output, and `+0800` for email. ISO output uses `Z` for UTC.
-The timezone row shows the detected timezone and resolved offset.
+Timezone selection follows these rules:
 
-HTTP dates always use GMT, as required by the HTTP format. Unix timestamps remain
-independent of timezone. All rows in `-a` output represent the same instant, subject
-to each format's precision.
+- An explicit input timezone determines the instant. `--timezone` changes how
+  that instant is displayed.
+- Dates without a timezone use `--timezone` if supplied, otherwise the system
+  timezone.
+- Without `--timezone`, output uses the explicit input timezone if present,
+  otherwise the system timezone.
+- Unix timestamps are independent of timezone. All output formats represent the
+  same instant, within each format's precision.
 
-Timezone rules are applied for the input date, including daylight saving. Ambiguous
-or nonexistent local times during clock changes are rejected; provide an explicit
-offset to identify the intended instant. If both an offset and IANA name are given,
-they must agree. Regional abbreviations such as `CST` are not guessed outside the
-standard email grammar; use an IANA name or numeric offset.
+Named timezones apply daylight-saving rules for the input date; fixed offsets do
+not change. Ambiguous or nonexistent local times are rejected. Supply an explicit
+offset to identify the intended instant. If an input includes both an offset and
+an IANA name, they must agree. Regional abbreviations such as `CST` are accepted
+only where defined by the email date grammar.
 
-| Category | Format name | `--to` value (alias) | Example |
-| --- | --- | --- | --- |
-| Timestamp | Unix timestamp (s) | `seconds` (`s`) | `1704164645` |
-| Timestamp | Unix timestamp (ms) | `milliseconds` (`ms`) | `1704164645123` |
-| Timestamp | Unix timestamp (us) | `microseconds` (`us`) | `1704164645123456` |
-| Timestamp | Unix timestamp (ns) | `nanoseconds` (`ns`) | `1704164645123456789` |
-| Datetime | Readable datetime | `readable` | `2024-01-02 11:04:05.123456789 +08:00` |
-| Datetime | ISO datetime | `iso8601` (`rfc3339`) | `2024-01-02T11:04:05.123456789+08:00` |
-| Header date | HTTP date | `http` | `Tue, 02 Jan 2024 03:04:05 GMT` |
-| Header date | Email date | `email` (`rfc2822`) | `Tue, 2 Jan 2024 11:04:05 +0800` |
+## Units and precision
 
-Examples use the same instant; lower-precision formats omit fractional detail.
-`us` denotes microseconds and matches the ASCII CLI alias.
+Integer timestamp units are inferred from the digit count, excluding the sign
+and leading zeros:
 
-### Numeric detection and precision
+| Digits | Unit |
+| --- | --- |
+| 1–10 | Seconds |
+| 11–13 | Milliseconds |
+| 14–16 | Microseconds |
+| 17 or more | Nanoseconds |
 
-Integer detection uses the number of digits in the magnitude, ignoring the sign
-and leading zeros: up to 10 means seconds, 11–13 milliseconds, 14–16 microseconds,
-and 17 or more nanoseconds. Decimal input defaults to seconds.
+Zero and decimal input default to seconds. Use `--unit` when digit count does not
+identify the intended unit: `chronox --unit ms 1000` means one second after the
+Unix epoch. For negative input, `--` can separate options from the value:
+`chronox --unit ns -- -1`. Pure digits are always treated as timestamps; use
+separators for date-only input.
 
-Magnitude cannot identify units with certainty. Use `-u, --unit` with `seconds`,
-`milliseconds`, `microseconds`, or `nanoseconds` (or `s`, `ms`, `us`, `ns`) for
-small values near the epoch or dates outside the usual range. For example,
-`chronox --unit ms 1000` means one second after the epoch. Pure digits always take
-the timestamp path; use separators for a date-only input.
+Calculations use integers and retain nanosecond precision. Integer timestamp
+output rounds down toward negative infinity when converting to a coarser unit.
+HTTP and email output omit fractional seconds. Readable, ISO, and nanosecond
+output preserve full precision when the format is available.
 
-Integer output rounds down toward negative infinity when the target unit is
-coarser than the input. HTTP and email formats have whole-second precision.
-Readable, ISO, and nanosecond output preserve the complete instant. Calculations
-use integers, including `i128` for nanoseconds, rather than floating point.
+UTC years 0001–9999 are supported. Email output requires a year from 1900 to 9999
+in the display timezone. Historical offsets containing seconds cannot be
+represented in readable, ISO, or email output; those formats are marked
+unavailable, while HTTP and Unix output remain available. Leap seconds,
+precision beyond nanoseconds, and ambiguous date forms such as `01/02/2024`
+are rejected.
 
-Supported UTC years are 0001–9999. Email output requires a year from 1900 to 9999
-in the detected timezone.
-Historical timezone offsets containing seconds cannot be represented by the
-minute-resolution offsets used here. Readable, ISO, and email output report this
-as unavailable; HTTP and Unix output still represent the instant accurately.
-Leap seconds and fractions beyond nanosecond precision are rejected explicitly.
-Ambiguous locale dates such as `01/02/2024` are rejected.
+## Development
 
-## Development and extension
+Run locally with `cargo run -- <arguments>`. To check changes:
 
 ```sh
 cargo test --all-targets
@@ -158,19 +150,14 @@ cargo clippy --all-targets -- -D warnings
 cargo fmt --all -- --check
 ```
 
-- `src/parse.rs`: recognizes inputs and produces `Parsed`, containing a UTC instant,
-  input kind, timezone, and detection metadata. Add a date recognizer to `RECOGNIZERS`; return `None` for
-  a non-match or a validation result for a match. Register specific grammars before
-  overlapping general ones. Numeric parsing separately handles the unit override.
-- `src/output.rs`: defines output formats independently of input syntax. Add a
-  `Format` variant, label, formatter, and precision rule. Clap's derived format
-  registry automatically includes it in both `--to` and `-a`. `Format::default_for`
-  selects the default from the input kind; explicit targets bypass that selection.
-- `src/timezone.rs`: resolves system-local times, named timezones, and fixed offsets,
-  detects ambiguous/nonexistent wall-clock times, and labels display timezones.
-- `src/main.rs`: handles arguments, stdin, terminal styling, and exit codes.
-- `src/lib.rs`: exposes parsing and formatting for reuse without launching the CLI.
+Parsing and formatting share a UTC instant, so input and output formats can be
+extended independently.
 
-New input formats do not need output-specific converters, and new output formats
-do not need changes to existing recognizers. Tests exercise the full format matrix,
-offset normalization, precision, pre-epoch values, range boundaries, and CLI behavior.
+| File | Responsibility |
+| --- | --- |
+| [src/parse.rs](src/parse.rs) | Input recognition, unit detection, and validation. |
+| [src/output.rs](src/output.rs) | Output formats, default selection, and rendering. |
+| [src/timezone.rs](src/timezone.rs) | Timezone resolution and local-time validation. |
+| [src/main.rs](src/main.rs) | Arguments, stdin, and exit codes. |
+| [src/style.rs](src/style.rs) | Terminal colors and help styling. |
+| [src/lib.rs](src/lib.rs) | Public parsing and formatting API. |
