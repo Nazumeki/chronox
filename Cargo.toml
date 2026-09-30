@@ -1,6 +1,6 @@
 [package]
 name = "chronox"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Automatically recognize and convert timestamps and date strings"
 license = "MIT"
