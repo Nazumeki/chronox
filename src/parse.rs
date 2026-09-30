@@ -13,6 +13,7 @@ const RECOGNIZERS: &[fn(&str, Zone) -> Recognition] = &[rfc3339, datetime];
 pub enum InputKind {
     Timestamp,
     Datetime,
+    Now,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -88,6 +89,14 @@ fn recognize(input: &str, unit: Option<Unit>, default_zone: Zone) -> Result<Pars
     }
     if unit.is_some() {
         return Err("--unit applies only to numeric Unix timestamps".into());
+    }
+    if input == "now" {
+        return Ok(Parsed {
+            datetime: Utc::now(),
+            format: "Current time",
+            kind: InputKind::Now,
+            timezone: default_zone,
+        });
     }
     if input
         .split('.')

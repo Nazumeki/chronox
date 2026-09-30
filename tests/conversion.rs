@@ -174,8 +174,8 @@ fn default_output_depends_on_input_kind() {
         "-0.1",
     ] {
         assert_eq!(
-            Format::default_for(&parse(input, None, None).unwrap()),
-            Format::Readable
+            Format::defaults_for(&parse(input, None, None).unwrap()),
+            &[Format::Readable]
         );
     }
     for input in [
@@ -184,8 +184,8 @@ fn default_output_depends_on_input_kind() {
         "Tue, 02 Jan 2024 03:04:05 GMT",
     ] {
         assert_eq!(
-            Format::default_for(&parse(input, None, None).unwrap()),
-            Format::Seconds
+            Format::defaults_for(&parse(input, None, None).unwrap()),
+            &[Format::Seconds]
         );
     }
 }

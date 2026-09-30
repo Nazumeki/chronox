@@ -16,6 +16,7 @@ cargo install --path . --locked
 ## 用法
 
 ```sh
+chronox now
 chronox 1704164645
 chronox "2024-01-02T03:04:05Z" --to milliseconds
 chronox -a 1704164645123456789
@@ -25,6 +26,10 @@ echo 1704164645 | chronox -z UTC
 默认情况下，时间戳转换为系统时区的可读日期时间，日期字符串转换为以秒为单位的
 整数 Unix 时间戳。包含空格的输入需要加引号。未提供输入参数时，chronox 从标准输入
 读取一个值，并忽略首尾空白。
+
+`chronox now` 显示当前的秒级 Unix 时间戳和系统时区的可读日期时间，两者对应同一时刻。
+使用 `--timezone` 更改显示时区，`--to` 选择一种输出格式，或 `--all` 显示全部格式。
+`--unit` 仅适用于数字输入，不能与 `now` 一起使用。
 
 | 选项 | 说明 |
 | --- | --- |

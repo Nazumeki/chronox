@@ -10,6 +10,72 @@ fn run(args: &[&str]) -> Output {
         .unwrap()
 }
 
+fn output_value<'a>(stdout: &'a str, label: &str) -> &'a str {
+    stdout
+        .lines()
+        .find_map(|line| line.trim_start().strip_prefix(label))
+        .unwrap_or_else(|| panic!("missing {label}: {stdout}"))
+        .trim()
+}
+
+#[test]
+fn now_defaults_to_current_seconds_and_datetime_in_selected_timezone() {
+    for zone in [None, Some("UTC"), Some("Asia/Singapore"), Some("-05:00")] {
+        let mut args = vec!["now"];
+        if let Some(zone) = zone {
+            args.extend(["-z", zone]);
+        }
+        let before = chrono::Utc::now();
+        let output = run(&args);
+        let after = chrono::Utc::now();
+        assert!(output.status.success(), "{:?}", output.stderr);
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        let seconds: i64 = output_value(&stdout, "Unix timestamp (s)").parse().unwrap();
+        let datetime = chrono::DateTime::parse_from_str(
+            output_value(&stdout, "Readable datetime"),
+            "%Y-%m-%d %H:%M:%S%.f %:z",
+        )
+        .unwrap();
+        assert!(datetime.to_utc() >= before && datetime.to_utc() <= after);
+        assert_eq!(seconds, datetime.timestamp());
+        let expected_zone: chronox::timezone::Zone = zone.unwrap_or("local").parse().unwrap();
+        assert_eq!(
+            datetime.offset(),
+            expected_zone.at(datetime.to_utc()).offset()
+        );
+        assert!(stdout.contains("Current time"));
+        assert!(!stdout.contains('\x1b'));
+        assert!(!stdout.contains("Unix timestamp (ms)"));
+        assert!(!stdout.contains("ISO datetime"));
+    }
+}
+
+#[test]
+fn now_supports_selected_and_all_output_formats() {
+    let before = chrono::Utc::now();
+    let output = run(&["now", "--to", "iso8601", "-z", "UTC"]);
+    let after = chrono::Utc::now();
+    assert!(output.status.success(), "{:?}", output.stderr);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let datetime = chrono::DateTime::parse_from_rfc3339(output_value(&stdout, "ISO datetime"))
+        .unwrap()
+        .to_utc();
+    assert!(datetime >= before && datetime <= after);
+    assert!(!stdout.contains("Unix timestamp (s)"));
+    assert!(!stdout.contains("Readable datetime"));
+
+    let before = chrono::Utc::now();
+    let output = run(&["--all", "now", "-z", "UTC"]);
+    let after = chrono::Utc::now();
+    assert!(output.status.success(), "{:?}", output.stderr);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let parsed = chronox::parse::parse(output_value(&stdout, "ISO datetime"), None, None).unwrap();
+    assert!(parsed.datetime >= before && parsed.datetime <= after);
+    for format in <chronox::output::Format as clap::ValueEnum>::value_variants() {
+        assert_eq!(output_value(&stdout, format.label()), format.value(&parsed));
+    }
+}
+
 #[test]
 fn datetime_input_defaults_to_seconds() {
     for input in [
@@ -261,6 +327,9 @@ fn invalid_inputs_and_conflicting_flags_fail_cleanly() {
         vec!["nonsense"],
         vec![],
         vec!["0", "-a", "--to", "http"],
+        vec!["now", "-a", "--to", "http"],
+        vec!["now", "--unit", "s"],
+        vec!["now", "extra"],
         vec!["--unit", "invalid", "0"],
         vec!["0", "--to", "human"],
         vec!["0", "--to", "database"],

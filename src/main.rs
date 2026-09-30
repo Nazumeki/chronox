@@ -14,14 +14,14 @@ use parse::Unit;
     styles = style::help(),
     disable_help_flag = true,
     disable_version_flag = true,
-    about = "Convert timestamps and dates with automatic format detection.\nDefault output: timestamp to local datetime; date to Unix seconds.",
+    about = "Convert timestamps and dates with automatic format detection.\nDefault output: timestamp to local datetime; date to Unix seconds.\nUse now to show the current Unix seconds and local datetime.",
     before_help = format!("{HEADING}chronox{HEADING:#}  {MUTED}{}{MUTED:#}", env!("CARGO_PKG_VERSION")),
     help_template = "{before-help}{about}\n\n{usage-heading} {usage}\n\n{all-args}"
 )]
 struct Cli {
     #[arg(
         allow_negative_numbers = true,
-        help = "Timestamp or date string. Quote dates that contain spaces.\nOmit to read one value from stdin."
+        help = "Timestamp, date string, or now for the current time.\nQuote dates that contain spaces. Omit to read one value from stdin."
     )]
     input: Option<String>,
 
@@ -94,14 +94,6 @@ fn run(cli: Cli) -> io::Result<()> {
     let parsed = parse::parse(&input, cli.unit, cli.timezone)
         .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
     let mut stdout = anstream::AutoStream::auto(io::stdout());
-    write!(
-        stdout,
-        "{}",
-        output::render(
-            &parsed,
-            cli.to.unwrap_or_else(|| Format::default_for(&parsed)),
-            cli.all
-        )
-    )?;
+    write!(stdout, "{}", output::render(&parsed, cli.to, cli.all))?;
     stdout.flush()
 }

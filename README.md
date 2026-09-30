@@ -16,6 +16,7 @@ cargo install --path . --locked
 ## Usage
 
 ```sh
+chronox now
 chronox 1704164645
 chronox "2024-01-02T03:04:05Z" --to milliseconds
 chronox -a 1704164645123456789
@@ -26,6 +27,11 @@ By default, timestamps produce a readable datetime in the system timezone, and
 date strings produce an integer Unix timestamp in seconds. Quote inputs that
 contain spaces. If no argument is supplied, chronox reads one value from stdin
 and ignores surrounding whitespace.
+
+`chronox now` shows the current Unix timestamp in seconds and a readable datetime
+in the system timezone, both from the same instant. Use `--timezone` to change the
+display timezone, `--to` to select one format, or `--all` to show every format.
+`--unit` applies only to numeric input and cannot be used with `now`.
 
 | Option | Description |
 | --- | --- |

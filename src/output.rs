@@ -36,10 +36,11 @@ pub enum Format {
 }
 
 impl Format {
-    pub fn default_for(parsed: &Parsed) -> Self {
+    pub fn defaults_for(parsed: &Parsed) -> &'static [Self] {
         match parsed.kind {
-            InputKind::Timestamp => Self::Readable,
-            InputKind::Datetime => Self::Seconds,
+            InputKind::Timestamp => &[Self::Readable],
+            InputKind::Datetime => &[Self::Seconds],
+            InputKind::Now => &[Self::Seconds, Self::Readable],
         }
     }
 
@@ -110,7 +111,7 @@ impl Format {
     }
 }
 
-pub fn render(parsed: &Parsed, target: Format, all: bool) -> String {
+pub fn render(parsed: &Parsed, target: Option<Format>, all: bool) -> String {
     let width = Format::value_variants()
         .iter()
         .map(|format| format.label().len())
@@ -130,8 +131,10 @@ pub fn render(parsed: &Parsed, target: Format, all: bool) -> String {
     // CLI choices and -a share a registry so new formats appear in both.
     let formats = if all {
         Format::value_variants()
+    } else if let Some(ref target) = target {
+        std::slice::from_ref(target)
     } else {
-        std::slice::from_ref(&target)
+        Format::defaults_for(parsed)
     };
     let heading = if all { "All formats" } else { "Result" };
     writeln!(output, "{HEADING}{heading}{HEADING:#}").expect("writing to a String cannot fail");
