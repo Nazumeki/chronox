@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
 
 permissions: {}
 
@@ -24,7 +24,8 @@ jobs:
       prerelease: ${{ steps.version.outputs.prerelease }}
       publish_cargo: ${{ steps.version.outputs.publish_cargo }}
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout source
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Check tag against Cargo.toml
@@ -84,17 +85,21 @@ jobs:
       TARGET: ${{ matrix.target }}
       ASSET_NAME: chronox-${{ github.ref_name }}-${{ matrix.target }}
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout source
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
         with:
           shared-key: ci-${{ matrix.os }}
           save-if: false
-      - run: cargo build --locked --release --target ${{ matrix.target }}
+      - name: Build release binary
+        run: cargo build --locked --release --target ${{ matrix.target }}
       - name: Package Unix binary
         if: runner.os != 'Windows'
         shell: bash
@@ -112,12 +117,14 @@ jobs:
           New-Item -ItemType Directory -Path "dist/$env:ASSET_NAME" -Force
           Copy-Item "target/$env:TARGET/release/chronox.exe", LICENSE, README.md, README.zh-CN.md "dist/$env:ASSET_NAME/"
           Compress-Archive -Path "dist/$env:ASSET_NAME" -DestinationPath "dist/$env:ASSET_NAME.zip"
-      - uses: actions/attest-build-provenance@v2
+      - name: Attest release archive
+        uses: actions/attest-build-provenance@v2
         with:
           subject-path: |
             dist/*.tar.gz
             dist/*.zip
-      - uses: actions/upload-artifact@v7
+      - name: Upload release archive
+        uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.target }}
           path: |
@@ -135,26 +142,31 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v8
+      - name: Download release archives
+        uses: actions/download-artifact@v8
         with:
           pattern: release-*
           merge-multiple: true
           path: dist
-      - run: sha256sum *.tar.gz *.zip > SHA256SUMS
+      - name: Generate checksums
+        run: sha256sum *.tar.gz *.zip > SHA256SUMS
         working-directory: dist
-      - name: Publish release with archives and checksums
+      - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.ref_name }}
           PRERELEASE: ${{ needs.validate.outputs.prerelease }}
         shell: bash
         run: |
-          args=(--verify-tag --generate-notes --title "$RELEASE_TAG")
+          args=(
+          --verify-tag
+          --generate-notes
+          --title "chronox $GITHUB_REF_NAME"
+          )
           if [[ "$PRERELEASE" == 'true' ]]; then
             args+=(--prerelease --latest=false)
           fi
-          gh release create "$RELEASE_TAG" dist/* "${args[@]}"
+          gh release create "$GITHUB_REF_NAME" dist/* "${args[@]}"
 
   crates_io:
     name: Publish crates.io package
@@ -165,10 +177,15 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout source
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo publish --locked --package chronox
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      - name: Publish workspace packages
+        run: cargo publish --locked --package chronox
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
