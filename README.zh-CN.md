@@ -180,8 +180,11 @@ git push origin v0.1.0
 | macOS Apple Silicon | `aarch64-apple-darwin` | `.tar.gz` |
 | macOS Intel | `x86_64-apple-darwin` | `.tar.gz` |
 
-`0.2.0-rc.1` 等预发布版本会生成 GitHub 预发布版本。发布使用内置的 `GITHUB_TOKEN`，
-无需额外配置密钥。此工作流将二进制文件发布到 GitHub Releases，不向 crates.io 发布 crate。
+标签必须采用 `vMAJOR.MINOR.PATCH` 格式，可添加 `-beta`、`-beta.N`、`-rc` 或
+`-rc.N` 后缀。预发布版本不会替换最新的稳定版本。压缩包附有构建来源证明。
+GitHub Release 和构建来源证明使用内置的 `GITHUB_TOKEN`。稳定的 `1.x.y` 版本在
+GitHub Release 发布成功后还会发布到 crates.io，需要配置仓库密钥
+`CARGO_REGISTRY_TOKEN`。其他版本仅发布到 GitHub Releases。
 
 ### 源码结构
 

@@ -198,9 +198,12 @@ checksums (`SHA256SUMS`), and archives containing the binary, license, and READM
 | macOS Apple Silicon | `aarch64-apple-darwin` | `.tar.gz` |
 | macOS Intel | `x86_64-apple-darwin` | `.tar.gz` |
 
-Prerelease versions such as `0.2.0-rc.1` produce GitHub prereleases. Publishing uses
-the built-in `GITHUB_TOKEN`; no additional secrets are needed. This workflow
-publishes binaries to GitHub Releases, not the crate to crates.io.
+Tags must use `vMAJOR.MINOR.PATCH`, optionally followed by `-beta`, `-beta.N`,
+`-rc`, or `-rc.N`. Prereleases do not replace the latest stable GitHub Release.
+Archives include build provenance attestations. GitHub Releases and attestations
+use the built-in `GITHUB_TOKEN`. Stable `1.x.y` releases also publish to crates.io
+after the GitHub Release succeeds, requiring the `CARGO_REGISTRY_TOKEN` repository
+secret. All other versions publish only to GitHub Releases.
 
 ### Source layout
 
