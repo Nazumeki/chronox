@@ -118,7 +118,7 @@ jobs:
           Copy-Item "target/$env:TARGET/release/chronox.exe", LICENSE, README.md, README.zh-CN.md "dist/$env:ASSET_NAME/"
           Compress-Archive -Path "dist/$env:ASSET_NAME" -DestinationPath "dist/$env:ASSET_NAME.zip"
       - name: Attest release archive
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: |
             dist/*.tar.gz
