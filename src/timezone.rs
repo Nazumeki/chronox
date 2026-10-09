@@ -90,6 +90,16 @@ impl Zone {
     }
 }
 
+/// Every IANA timezone name, sorted.
+pub fn names() -> Vec<&'static str> {
+    let mut names: Vec<&'static str> = chrono_tz::TZ_VARIANTS
+        .iter()
+        .map(|zone| zone.name())
+        .collect();
+    names.sort_unstable();
+    names
+}
+
 /// Recognize a trailing IANA timezone, UTC, or GMT. Short regional abbreviations
 /// are not guessed: for example CST can mean several different offsets.
 pub(crate) fn split_named(input: &str) -> Result<(&str, Option<Zone>), String> {

@@ -299,6 +299,53 @@ fn invalid_timezone_arguments_fail_without_accepting_partial_offsets() {
 }
 
 #[test]
+fn radix_multiple_timezones_and_list_timezones() {
+    let output = run(&["0x65937D25", "--to", "seconds"]);
+    assert!(output.status.success(), "{:?}", output.stderr);
+    assert!(
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .contains("1704164645")
+    );
+
+    let output = run(&["0b101", "--unit", "s", "--to", "seconds"]);
+    assert!(output.status.success(), "{:?}", output.stderr);
+    assert!(String::from_utf8(output.stdout).unwrap().contains('5'));
+
+    let output = run(&["1704164645", "-z", "UTC", "-z", "Asia/Singapore"]);
+    assert!(output.status.success(), "{:?}", output.stderr);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("UTC (UTC+00:00)"), "{stdout}");
+    assert!(stdout.contains("Asia/Singapore (UTC+08:00)"), "{stdout}");
+    assert!(stdout.contains("2024-01-02 03:04:05 +00:00"), "{stdout}");
+    assert!(stdout.contains("2024-01-02 11:04:05 +08:00"), "{stdout}");
+
+    // The first -z interprets timezone-less input.
+    let output = run(&[
+        "2024-01-02 03:04:05",
+        "-z",
+        "Asia/Singapore",
+        "-z",
+        "UTC",
+        "--to",
+        "seconds",
+    ]);
+    assert!(output.status.success(), "{:?}", output.stderr);
+    assert!(
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .contains("1704135845")
+    );
+
+    let output = run(&["--list-timezones"]);
+    assert!(output.status.success(), "{:?}", output.stderr);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.lines().any(|line| line == "Asia/Singapore"));
+    assert!(stdout.lines().any(|line| line == "UTC"));
+    assert!(stdout.lines().count() > 500, "{stdout}");
+}
+
+#[test]
 fn stdin_is_supported() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_chronox"))
         .args(["--to", "readable", "-z", "+05:45"])

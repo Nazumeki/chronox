@@ -2,7 +2,7 @@ use std::io::{self, IsTerminal, Read, Write};
 use std::process::ExitCode;
 
 use chronox::style::{self, ERROR, HEADING, MUTED};
-use chronox::timezone::Zone;
+use chronox::timezone::{self, Zone};
 use chronox::{output, parse};
 use clap::{CommandFactory, Parser};
 use output::Format;
@@ -53,9 +53,12 @@ struct Cli {
         long,
         value_name = "ZONE",
         allow_hyphen_values = true,
-        help = "Set the timezone for output and dates without a zone.\nUse an IANA name, UTC, local, or +/-HH:MM.\nDefault: input timezone, otherwise system timezone.\nHTTP dates always use GMT.\n"
+        help = "Set the timezone for output and dates without a zone.\nRepeat for multiple output zones; the first interprets dates without a zone.\nUse an IANA name, UTC, local, or +/-HH:MM.\nDefault: input timezone, otherwise system timezone.\nHTTP dates always use GMT.\n"
     )]
-    timezone: Option<Zone>,
+    timezone: Vec<Zone>,
+
+    #[arg(long, help = "List all available IANA timezone names and exit.")]
+    list_timezones: bool,
 
     #[arg(short = 'h', long, action = clap::ArgAction::Help, help = "Print help\n")]
     help: Option<bool>,
@@ -79,6 +82,13 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: Cli) -> io::Result<()> {
+    if cli.list_timezones {
+        let mut stdout = anstream::AutoStream::auto(io::stdout());
+        for name in timezone::names() {
+            writeln!(stdout, "{name}")?;
+        }
+        return stdout.flush();
+    }
     let input = match cli.input {
         Some(input) => input,
         None if io::stdin().is_terminal() => {
@@ -91,9 +101,13 @@ fn run(cli: Cli) -> io::Result<()> {
             input
         }
     };
-    let parsed = parse::parse(&input, cli.unit, cli.timezone)
+    let parsed = parse::parse(&input, cli.unit, cli.timezone.first().copied())
         .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
     let mut stdout = anstream::AutoStream::auto(io::stdout());
-    write!(stdout, "{}", output::render(&parsed, cli.to, cli.all))?;
+    write!(
+        stdout,
+        "{}",
+        output::render(&parsed, cli.to, cli.all, &cli.timezone)
+    )?;
     stdout.flush()
 }

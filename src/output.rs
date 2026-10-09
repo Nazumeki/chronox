@@ -5,6 +5,7 @@ use clap::ValueEnum;
 
 use crate::parse::{InputKind, Parsed};
 use crate::style::{HEADING, LABEL, MUTED, VALUE, WARNING};
+use crate::timezone::Zone;
 
 /// Every output format accepts the same normalized instant, regardless of input.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -111,7 +112,7 @@ impl Format {
     }
 }
 
-pub fn render(parsed: &Parsed, target: Option<Format>, all: bool) -> String {
+pub fn render(parsed: &Parsed, target: Option<Format>, all: bool, zones: &[Zone]) -> String {
     let width = Format::value_variants()
         .iter()
         .map(|format| format.label().len())
@@ -120,13 +121,6 @@ pub fn render(parsed: &Parsed, target: Option<Format>, all: bool) -> String {
         .max("Timezone".len());
     let mut output = format!("{HEADING}chronox{HEADING:#}  {MUTED}time, translated{MUTED:#}\n\n");
     row(&mut output, "Detected", parsed.format, width);
-    row(
-        &mut output,
-        "Timezone",
-        &parsed.timezone.label(parsed.datetime),
-        width,
-    );
-    output.push('\n');
 
     // CLI choices and -a share a registry so new formats appear in both.
     let formats = if all {
@@ -136,19 +130,52 @@ pub fn render(parsed: &Parsed, target: Option<Format>, all: bool) -> String {
     } else {
         Format::defaults_for(parsed)
     };
-    let heading = if all { "All formats" } else { "Result" };
-    writeln!(output, "{HEADING}{heading}{HEADING:#}").expect("writing to a String cannot fail");
-    for format in formats {
-        let label = format!("{:<width$}", format.label());
-        let value = format.value(parsed);
-        writeln!(output, "  {LABEL}{label}{LABEL:#}  {VALUE}{value}{VALUE:#}")
+
+    if zones.len() >= 2 {
+        output.push('\n');
+        for (index, zone) in zones.iter().enumerate() {
+            if index > 0 {
+                output.push('\n');
+            }
+            writeln!(
+                output,
+                "{HEADING}{}{HEADING:#}",
+                zone.label(parsed.datetime)
+            )
             .expect("writing to a String cannot fail");
+            let mut view = parsed.clone();
+            view.timezone = *zone;
+            for format in formats {
+                write_row(&mut output, *format, &view, width);
+            }
+        }
+    } else {
+        row(
+            &mut output,
+            "Timezone",
+            &parsed.timezone.label(parsed.datetime),
+            width,
+        );
+        output.push('\n');
+        let heading = if all { "All formats" } else { "Result" };
+        writeln!(output, "{HEADING}{heading}{HEADING:#}").expect("writing to a String cannot fail");
+        for format in formats {
+            write_row(&mut output, *format, parsed, width);
+        }
     }
+
     if formats.iter().any(|format| format.loses_precision(parsed)) {
         writeln!(output, "\n{WARNING}Note:{WARNING:#} Integer timestamps round down; HTTP / email dates omit fractions.")
             .expect("writing to a String cannot fail");
     }
     output
+}
+
+fn write_row(output: &mut String, format: Format, parsed: &Parsed, width: usize) {
+    let label = format!("{:<width$}", format.label());
+    let value = format.value(parsed);
+    writeln!(output, "  {LABEL}{label}{LABEL:#}  {VALUE}{value}{VALUE:#}")
+        .expect("writing to a String cannot fail");
 }
 
 fn row(output: &mut String, label: &str, value: &str, width: usize) {
