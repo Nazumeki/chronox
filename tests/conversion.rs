@@ -46,6 +46,35 @@ fn detects_all_timestamp_scales_without_floating_point_loss() {
 }
 
 #[test]
+fn radix_inputs_are_exact_seconds_by_default() {
+    assert_eq!(
+        parse("0x65937D25", None, None).unwrap().datetime,
+        utc("2024-01-02T03:04:05Z")
+    );
+    assert_eq!(
+        parse("0X65937d25", None, None).unwrap().datetime,
+        utc("2024-01-02T03:04:05Z")
+    );
+    assert_eq!(
+        parse("0b1100101100100110111110100100101", None, None)
+            .unwrap()
+            .datetime,
+        utc("2024-01-02T03:04:05Z")
+    );
+    assert_eq!(parse("-0x1", None, None).unwrap().nanos(), -1_000_000_000);
+    assert_eq!(parse("+0x1", None, None).unwrap().nanos(), 1_000_000_000);
+    assert_eq!(
+        parse("0x1", Some(Unit::Milliseconds), None)
+            .unwrap()
+            .nanos(),
+        1_000_000
+    );
+    for input in ["0x", "0xZZ", "0b2", "0x1.5", "0b"] {
+        assert!(parse(input, None, None).is_err(), "accepted {input:?}");
+    }
+}
+
+#[test]
 fn recognizes_datetime_families_and_normalizes_offsets() {
     for input in [
         "2024-01-02T03:04:05Z",

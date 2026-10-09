@@ -48,7 +48,7 @@ impl Unit {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Parsed {
     pub datetime: DateTime<Utc>,
     pub format: &'static str,
@@ -80,6 +80,9 @@ fn recognize(input: &str, unit: Option<Unit>, default_zone: Zone) -> Result<Pars
     }
 
     let unsigned = input.strip_prefix(['-', '+']).unwrap_or(input);
+    if let Some((radix, digits)) = radix_prefix(unsigned) {
+        return parse_radix(input, digits, radix, unit);
+    }
     if !unsigned.is_empty()
         && unsigned
             .bytes()
@@ -236,6 +239,59 @@ fn parse_timestamp(input: &str, unsigned: &str, unit: Option<Unit>) -> Result<Pa
     } else {
         nanos
     };
+    let seconds = i64::try_from(nanos.div_euclid(NANOS_PER_SECOND)).map_err(|_| overflow())?;
+    let subsecond = nanos.rem_euclid(NANOS_PER_SECOND) as u32;
+    let datetime = DateTime::from_timestamp(seconds, subsecond).ok_or_else(overflow)?;
+    checked(datetime, unit.label(), InputKind::Timestamp, Zone::Local)
+}
+
+/// Split a `0x`/`0X` or `0b`/`0B` prefix off an unsigned input.
+fn radix_prefix(unsigned: &str) -> Option<(u32, &str)> {
+    if let Some(digits) = unsigned
+        .strip_prefix("0x")
+        .or_else(|| unsigned.strip_prefix("0X"))
+    {
+        return Some((16, digits));
+    }
+    if let Some(digits) = unsigned
+        .strip_prefix("0b")
+        .or_else(|| unsigned.strip_prefix("0B"))
+    {
+        return Some((2, digits));
+    }
+    None
+}
+
+fn parse_radix(
+    input: &str,
+    digits: &str,
+    radix: u32,
+    unit: Option<Unit>,
+) -> Result<Parsed, String> {
+    let name = if radix == 16 { "hexadecimal" } else { "binary" };
+    let magnitude = match i128::from_str_radix(digits, radix) {
+        Ok(value) => value,
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::num::IntErrorKind::PosOverflow | std::num::IntErrorKind::NegOverflow
+            ) =>
+        {
+            return Err(
+                "timestamp is outside the supported date range (UTC years 0001–9999)".into(),
+            );
+        }
+        Err(_) => return Err(format!("invalid {name} timestamp")),
+    };
+    let value = if input.starts_with('-') {
+        -magnitude
+    } else {
+        magnitude
+    };
+    let unit = unit.unwrap_or(Unit::Seconds);
+    let overflow =
+        || "timestamp is outside the supported date range (UTC years 0001–9999)".to_string();
+    let nanos = value.checked_mul(unit.scale()).ok_or_else(overflow)?;
     let seconds = i64::try_from(nanos.div_euclid(NANOS_PER_SECOND)).map_err(|_| overflow())?;
     let subsecond = nanos.rem_euclid(NANOS_PER_SECOND) as u32;
     let datetime = DateTime::from_timestamp(seconds, subsecond).ok_or_else(overflow)?;
