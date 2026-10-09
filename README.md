@@ -38,7 +38,8 @@ display timezone, `--to` to select one format, or `--all` to show every format.
 | `-t, --to FORMAT` | Select an output format from the table below. |
 | `-a, --all` | Show all eight output formats. Cannot be combined with `--to`. |
 | `-u, --unit UNIT` | Set the unit for numeric input: `s`, `ms`, `us`, or `ns`, or the corresponding full name. |
-| `-z, --timezone ZONE` | Set the output timezone and the timezone used to interpret dates without one. |
+| `-z, --timezone ZONE` | Set the output timezone; repeat to display several zones at once. The first zone also interprets dates without one. |
+| `--list-timezones` | List all available IANA timezone names and exit. |
 | `-h, --help` | Show help. |
 | `-v, --version` | Show the version. |
 
@@ -53,6 +54,7 @@ Invalid input produces an error on stderr and exit code 2.
 | Format | Examples |
 | --- | --- |
 | Unix timestamp | `1704164645`, `1704164645.123456789` |
+| Hex or binary timestamp | `0x65937D25`, `0b1100101100100110111110100100101` |
 | ISO datetime | `2024-01-02T03:04:05Z`, `2024-01-02T11:04:05+08:00` |
 | ISO basic datetime | `20240102T030405Z` |
 | ISO ordinal or week datetime | `2024-002T03:04:05Z`, `2024-W01-2T03:04:05Z` |
@@ -92,11 +94,14 @@ Input can specify a numeric offset, `Z`, a standard HTTP/email timezone field,
 or a trailing `UTC`, `GMT`, or IANA name such as `Asia/Singapore`.
 
 Use `-z, --timezone` to select an IANA name, `UTC` (also `GMT` or `Z`), `local`,
-or a fixed offset such as `+08:00`, `-05:00`, or `+0545`.
+or a fixed offset such as `+08:00`, `-05:00`, or `+0545`. Repeat the option to
+display the instant in several zones at once; the first zone also interprets
+dates without a timezone. `--list-timezones` prints every available IANA name.
 
 ```sh
 chronox "2024-01-02 11:04:05 Asia/Singapore" -z UTC --to iso8601
 chronox 1704164645 -z=-05:00
+chronox 1704164645 -z UTC -z Asia/Singapore
 ```
 
 Timezone selection follows these rules:
@@ -128,11 +133,12 @@ and leading zeros:
 | 14–16 | Microseconds |
 | 17 or more | Nanoseconds |
 
-Zero and decimal input default to seconds. Use `--unit` when digit count does not
-identify the intended unit: `chronox --unit ms 1000` means one second after the
-Unix epoch. For negative input, `--` can separate options from the value:
-`chronox --unit ns -- -1`. Pure digits are always treated as timestamps; use
-separators for date-only input.
+Zero and decimal input default to seconds. Hexadecimal (`0x`) and binary (`0b`)
+input also defaults to seconds and honors `--unit`. Use `--unit` when digit count
+does not identify the intended unit: `chronox --unit ms 1000` means one second
+after the Unix epoch. For negative input, `--` can separate options from the
+value: `chronox --unit ns -- -1`. Pure digits are always treated as timestamps;
+use separators for date-only input.
 
 Calculations use integers and retain nanosecond precision. Integer timestamp
 output rounds down toward negative infinity when converting to a coarser unit.
