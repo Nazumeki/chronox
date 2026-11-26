@@ -380,7 +380,7 @@ fn relative(input: &str, zone: Zone) -> Recognition {
             .as_bytes()
             .first()
             .is_some_and(u8::is_ascii_digit)
-            || after_sign.contains(':')
+            || after_sign.contains([':', '-', '/'])
         {
             return None;
         }
