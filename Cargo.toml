@@ -3,10 +3,19 @@ name = "chronox"
 version = "0.1.2"
 edition = "2024"
 description = "Automatically recognize and convert timestamps and date strings"
+repository = "https://github.com/Nazumeki/chronox"
+readme = "README.md"
 license = "MIT"
+keywords = ["timestamp", "datetime", "timezone", "cli", "unix-time"]
+categories = ["command-line-utilities", "date-and-time"]
 
 [dependencies]
 anstream = "1.0"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 chrono-tz = "0.10.4"
 clap = { version = "4.6", features = ["derive"] }
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
