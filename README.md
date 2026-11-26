@@ -17,8 +17,9 @@ cargo install --path . --locked
 
 ```sh
 chronox now
-chronox 1704164645
-chronox "2024-01-02T03:04:05Z" --to milliseconds
+chronox now+2h
+chronox 1_704_164_645
+chronox "2024-01-02T03:04:05Z" --to milliseconds --raw
 chronox -a 1704164645123456789
 echo 1704164645 | chronox -z UTC
 ```
@@ -28,18 +29,21 @@ date strings produce an integer Unix timestamp in seconds. Quote inputs that
 contain spaces. If no argument is supplied, chronox reads one value from stdin
 and ignores surrounding whitespace.
 
-`chronox now` shows the current Unix timestamp in seconds and a readable datetime
-in the system timezone, both from the same instant. Use `--timezone` to change the
-display timezone, `--to` to select one format, or `--all` to show every format.
-`--unit` applies only to numeric input and cannot be used with `now`.
+`chronox now` (case-insensitive) and relative offsets such as `now+2h`, `now - 30m`,
+or `+15m` show the resulting Unix timestamp in seconds and a readable datetime in
+the selected timezone, both from the same instant. Use `--timezone` to change the
+display timezone, `--to` to select one format, `--all` to show every format, or
+`--raw` to print bare converted values without headers or labels. `--unit` applies
+only to numeric input and cannot be used with `now` or relative offsets.
 
 | Option | Description |
 | --- | --- |
 | `-t, --to FORMAT` | Select an output format from the table below. |
-| `-a, --all` | Show all eight output formats. Cannot be combined with `--to`. |
+| `-a, --all` | Show all nine output formats. Cannot be combined with `--to`. |
+| `-r, --raw` | Print converted value(s) only, one per line, for scripts and pipes. |
 | `-u, --unit UNIT` | Set the unit for numeric input: `s`, `ms`, `us`, or `ns`, or the corresponding full name. |
 | `-z, --timezone ZONE` | Set the output timezone; repeat to display several zones at once. The first zone also interprets dates without one. |
-| `--list-timezones` | List all available IANA timezone names and exit. |
+| `--list-timezones` | List all available IANA timezone names and exit. Cannot be combined with other options. |
 | `-h, --help` | Show help. |
 | `-v, --version` | Show the version. |
 
@@ -53,8 +57,9 @@ Invalid input produces an error on stderr and exit code 2.
 
 | Format | Examples |
 | --- | --- |
-| Unix timestamp | `1704164645`, `1704164645.123456789` |
-| Hex or binary timestamp | `0x65937D25`, `0b1100101100100110111110100100101` |
+| Unix timestamp | `1704164645`, `1_704_164_645`, `1704164645.123456789` |
+| Hex, octal, or binary timestamp | `0x6593_7D25`, `0o14544676445`, `0b1100101100100110111110100100101` |
+| Current or relative time | `now`, `now+2h`, `now - 30m`, `+1d12h`, `-- -15m` |
 | ISO datetime | `2024-01-02T03:04:05Z`, `2024-01-02T11:04:05+08:00` |
 | ISO basic datetime | `20240102T030405Z` |
 | ISO ordinal or week datetime | `2024-002T03:04:05Z`, `2024-W01-2T03:04:05Z` |
@@ -63,9 +68,12 @@ Invalid input produces an error on stderr and exit code 2.
 | Email date | `Tue, 02 Jan 2024 11:04:05 +0800` |
 | Date only | `2024-01-02`, `2024/01/02`, `2024-002`, `2024-W01-2` |
 
-Timestamps accept seconds, milliseconds, microseconds, and nanoseconds; see
-[unit detection](#units-and-precision). ISO calendar and hyphen-separated readable
-datetimes also accept hours and minutes without seconds. Date-only inputs use
+Timestamps accept seconds, milliseconds, microseconds, and nanoseconds, with
+optional `_` digit separators; see [unit detection](#units-and-precision). Relative
+offsets accept compound units (`w`, `d`, `h`, `m`, `s`, `ms`, `us`, `ns`); pass `--`
+before standalone negative offsets such as `chronox -- -30m`. ISO calendar and
+hyphen-separated readable datetimes also accept hours and minutes without seconds,
+and ISO designators (`T`, `W`, `Z`) are case-insensitive. Date-only inputs use
 midnight in the applicable timezone.
 
 HTTP input also accepts the older RFC 850 and asctime forms. HTTP and email inputs
@@ -83,10 +91,13 @@ must contain only the date value, without the `Date:` field name.
 | ISO datetime | `iso8601` | `rfc3339` |
 | HTTP date | `http` | — |
 | Email date | `email` | `rfc2822` |
+| Relative time | `relative` | `rel` |
 
 Readable output uses `YYYY-MM-DD HH:mm:ss +HH:mm`, with fractional seconds when
 present. ISO output uses RFC 3339. Readable, ISO, and email output include a UTC
-offset; ISO uses `Z` for UTC. HTTP output always uses GMT.
+offset; ISO uses `Z` for UTC. HTTP output always uses GMT. Relative output shows
+up to two calendar or time units relative to the current time (for example
+`2 hours, 15 minutes ago`, `in 3 days`, or `now` within one second).
 
 ## Timezones
 
@@ -94,9 +105,11 @@ Input can specify a numeric offset, `Z`, a standard HTTP/email timezone field,
 or a trailing `UTC`, `GMT`, or IANA name such as `Asia/Singapore`.
 
 Use `-z, --timezone` to select an IANA name, `UTC` (also `GMT` or `Z`), `local`,
-or a fixed offset such as `+08:00`, `-05:00`, or `+0545`. Repeat the option to
-display the instant in several zones at once; the first zone also interprets
-dates without a timezone. `--list-timezones` prints every available IANA name.
+or a fixed offset such as `+08:00`, `-05:00`, or `+0545`. IANA names, `UTC`/`GMT`,
+and `local` are matched case-insensitively. Repeat the option to display the instant
+in several zones at once; the first zone also interprets dates without a timezone,
+and date inputs default to readable output when multiple zones are requested.
+`--list-timezones` prints every available IANA name.
 
 ```sh
 chronox "2024-01-02 11:04:05 Asia/Singapore" -z UTC --to iso8601
@@ -133,17 +146,19 @@ and leading zeros:
 | 14–16 | Microseconds |
 | 17 or more | Nanoseconds |
 
-Zero and decimal input default to seconds. Hexadecimal (`0x`) and binary (`0b`)
-input also defaults to seconds and honors `--unit`. Use `--unit` when digit count
-does not identify the intended unit: `chronox --unit ms 1000` means one second
-after the Unix epoch. For negative input, `--` can separate options from the
-value: `chronox --unit ns -- -1`. Pure digits are always treated as timestamps;
-use separators for date-only input.
+Zero and decimal input default to seconds. Hexadecimal (`0x`), octal (`0o`), and
+binary (`0b`) input also defaults to seconds and honors `--unit`. Underscore (`_`)
+separators between digits (and immediately after a radix prefix, such as
+`0x_6593_7D25`) are ignored during unit detection and parsing. Use `--unit` when
+digit count does not identify the intended unit: `chronox --unit ms 1000` means
+one second after the Unix epoch. For negative input, `--` can separate options
+from the value: `chronox --unit ns -- -1`. Pure digits are always treated as
+timestamps; use separators for date-only input.
 
 Calculations use integers and retain nanosecond precision. Integer timestamp
 output rounds down toward negative infinity when converting to a coarser unit.
-HTTP and email output omit fractional seconds. Readable, ISO, and nanosecond
-output preserve full precision when the format is available.
+HTTP, email, and relative output omit fractional seconds. Readable, ISO, and
+nanosecond output preserve full precision when the format is available.
 
 UTC years 0001–9999 are supported. Email output requires a year from 1900 to 9999
 in the display timezone. Historical offsets containing seconds cannot be
