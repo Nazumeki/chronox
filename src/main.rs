@@ -14,14 +14,14 @@ use parse::Unit;
     styles = style::help(),
     disable_help_flag = true,
     disable_version_flag = true,
-    about = "Convert timestamps and dates with automatic format detection.\nDefault output: timestamp to local datetime; date to Unix seconds.\nUse now to show the current Unix seconds and local datetime.",
+    about = "Convert timestamps and dates with automatic format detection.\nDefault output: timestamp to local datetime; date to Unix seconds.\nUse now or relative offsets (now+2h, -30m) for current or offset time.",
     before_help = format!("{HEADING}chronox{HEADING:#}  {MUTED}{}{MUTED:#}", env!("CARGO_PKG_VERSION")),
     help_template = "{before-help}{about}\n\n{usage-heading} {usage}\n\n{all-args}"
 )]
 struct Cli {
     #[arg(
         allow_negative_numbers = true,
-        help = "Timestamp, date string, or now for the current time.\nQuote dates that contain spaces. Omit to read one value from stdin."
+        help = "Timestamp, date string, now, or relative offset (e.g. now+2h, +15m).\nQuote inputs that contain spaces. Omit to read one value from stdin."
     )]
     input: Option<String>,
 
@@ -35,9 +35,16 @@ struct Cli {
         value_name = "FORMAT",
         hide_possible_values = true,
         conflicts_with = "all",
-        help = "Choose the output format; overrides the default.\nUse s, ms, us, ns, readable, iso8601, http, or email.\nCannot be combined with --all.\n"
+        help = "Choose the output format; overrides the default.\nUse s, ms, us, ns, readable, iso8601, http, email, or relative.\nCannot be combined with --all.\n"
     )]
     to: Option<Format>,
+
+    #[arg(
+        short = 'r',
+        long,
+        help = "Print converted value(s) only, one per line.\n"
+    )]
+    raw: bool,
 
     #[arg(
         short,
@@ -57,7 +64,11 @@ struct Cli {
     )]
     timezone: Vec<Zone>,
 
-    #[arg(long, help = "List all available IANA timezone names and exit.")]
+    #[arg(
+        long,
+        conflicts_with_all = ["input", "all", "to", "raw", "unit", "timezone"],
+        help = "List all available IANA timezone names and exit."
+    )]
     list_timezones: bool,
 
     #[arg(short = 'h', long, action = clap::ArgAction::Help, help = "Print help\n")]
@@ -103,11 +114,12 @@ fn run(cli: Cli) -> io::Result<()> {
     };
     let parsed = parse::parse(&input, cli.unit, cli.timezone.first().copied())
         .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
-    let mut stdout = anstream::AutoStream::auto(io::stdout());
-    write!(
-        stdout,
-        "{}",
+    let rendered = if cli.raw {
+        output::render_raw(&parsed, cli.to, cli.all, &cli.timezone)
+    } else {
         output::render(&parsed, cli.to, cli.all, &cli.timezone)
-    )?;
+    };
+    let mut stdout = anstream::AutoStream::auto(io::stdout());
+    write!(stdout, "{rendered}")?;
     stdout.flush()
 }

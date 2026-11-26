@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use chrono::{Datelike, SecondsFormat};
+use chrono::{DateTime, Datelike, Months, SecondsFormat, Utc};
 use clap::ValueEnum;
 
 use crate::parse::{InputKind, Parsed};
@@ -34,6 +34,9 @@ pub enum Format {
     /// Email date in the detected timezone
     #[value(name = "email", alias = "rfc2822")]
     Email,
+    /// Human-readable offset relative to the current time
+    #[value(name = "relative", alias = "rel")]
+    Relative,
 }
 
 impl Format {
@@ -41,7 +44,7 @@ impl Format {
         match parsed.kind {
             InputKind::Timestamp => &[Self::Readable],
             InputKind::Datetime => &[Self::Seconds],
-            InputKind::Now => &[Self::Seconds, Self::Readable],
+            InputKind::Now | InputKind::Relative => &[Self::Seconds, Self::Readable],
         }
     }
 
@@ -55,6 +58,7 @@ impl Format {
             Self::Iso8601 => "ISO datetime",
             Self::Http => "HTTP date",
             Self::Email => "Email date",
+            Self::Relative => "Relative time",
         }
     }
 
@@ -98,12 +102,13 @@ impl Format {
                     "unavailable (email dates require a local year from 1900 to 9999)".into()
                 }
             }
+            Self::Relative => format_relative(parsed.datetime, Utc::now()),
         }
     }
 
     fn loses_precision(self, parsed: &Parsed) -> bool {
         let resolution = match self {
-            Self::Seconds | Self::Http | Self::Email => 1_000_000_000,
+            Self::Seconds | Self::Http | Self::Email | Self::Relative => 1_000_000_000,
             Self::Milliseconds => 1_000_000,
             Self::Microseconds => 1_000,
             _ => 1,
@@ -122,14 +127,7 @@ pub fn render(parsed: &Parsed, target: Option<Format>, all: bool, zones: &[Zone]
     let mut output = format!("{HEADING}chronox{HEADING:#}  {MUTED}time, translated{MUTED:#}\n\n");
     row(&mut output, "Detected", parsed.format, width);
 
-    // CLI choices and -a share a registry so new formats appear in both.
-    let formats = if all {
-        Format::value_variants()
-    } else if let Some(ref target) = target {
-        std::slice::from_ref(target)
-    } else {
-        Format::defaults_for(parsed)
-    };
+    let formats = selected_formats(parsed, target.as_ref(), all, zones);
 
     if zones.len() >= 2 {
         output.push('\n');
@@ -165,10 +163,110 @@ pub fn render(parsed: &Parsed, target: Option<Format>, all: bool, zones: &[Zone]
     }
 
     if formats.iter().any(|format| format.loses_precision(parsed)) {
-        writeln!(output, "\n{WARNING}Note:{WARNING:#} Integer timestamps round down; HTTP / email dates omit fractions.")
+        writeln!(output, "\n{WARNING}Note:{WARNING:#} Integer timestamps round down; HTTP, email, and relative formats omit fractions.")
             .expect("writing to a String cannot fail");
     }
     output
+}
+
+pub fn render_raw(parsed: &Parsed, target: Option<Format>, all: bool, zones: &[Zone]) -> String {
+    let formats = selected_formats(parsed, target.as_ref(), all, zones);
+    let mut output = String::new();
+    if zones.len() >= 2 {
+        for zone in zones {
+            let mut view = parsed.clone();
+            view.timezone = *zone;
+            for format in formats {
+                writeln!(output, "{}", format.value(&view))
+                    .expect("writing to a String cannot fail");
+            }
+        }
+    } else {
+        for format in formats {
+            writeln!(output, "{}", format.value(parsed)).expect("writing to a String cannot fail");
+        }
+    }
+    output
+}
+
+pub fn format_relative(instant: DateTime<Utc>, now: DateTime<Utc>) -> String {
+    let instant_nanos = nanos_of(instant);
+    let now_nanos = nanos_of(now);
+    let delta = instant_nanos - now_nanos;
+    if delta.unsigned_abs() < 1_000_000_000 {
+        return "now".into();
+    }
+    let (earlier, later, future) = if delta > 0 {
+        (now, instant, true)
+    } else {
+        (instant, now, false)
+    };
+
+    let mut total_months =
+        (later.year() - earlier.year()) * 12 + (later.month() as i32 - earlier.month() as i32);
+    if total_months > 0
+        && earlier
+            .checked_add_months(Months::new(total_months as u32))
+            .is_none_or(|advanced| advanced > later)
+    {
+        total_months -= 1;
+    }
+    let anchor = earlier
+        .checked_add_months(Months::new(total_months as u32))
+        .unwrap_or(earlier);
+    let rem_secs = ((nanos_of(later) - nanos_of(anchor)) / 1_000_000_000) as u64;
+
+    let units = [
+        ((total_months / 12) as u64, "year", "years"),
+        ((total_months % 12) as u64, "month", "months"),
+        (rem_secs / 86_400, "day", "days"),
+        ((rem_secs % 86_400) / 3_600, "hour", "hours"),
+        ((rem_secs % 3_600) / 60, "minute", "minutes"),
+        (rem_secs % 60, "second", "seconds"),
+    ];
+
+    let primary_index = units
+        .iter()
+        .position(|(count, _, _)| *count > 0)
+        .expect("delta is at least 1 second");
+    let mut text = plural(units[primary_index]);
+    if let Some(&next) = units.get(primary_index + 1)
+        && next.0 > 0
+    {
+        let _ = write!(text, ", {}", plural(next));
+    }
+    if future {
+        format!("in {text}")
+    } else {
+        format!("{text} ago")
+    }
+}
+
+fn selected_formats<'a>(
+    parsed: &Parsed,
+    target: Option<&'a Format>,
+    all: bool,
+    zones: &[Zone],
+) -> &'a [Format] {
+    // CLI choices and -a share a registry so new formats appear in both.
+    if all {
+        Format::value_variants()
+    } else if let Some(target) = target {
+        std::slice::from_ref(target)
+    } else if zones.len() >= 2 && parsed.kind == InputKind::Datetime {
+        &[Format::Readable]
+    } else {
+        Format::defaults_for(parsed)
+    }
+}
+
+fn nanos_of(datetime: DateTime<Utc>) -> i128 {
+    i128::from(datetime.timestamp()) * 1_000_000_000 + i128::from(datetime.timestamp_subsec_nanos())
+}
+
+fn plural((count, singular, plural): (u64, &str, &str)) -> String {
+    let noun = if count == 1 { singular } else { plural };
+    format!("{count} {noun}")
 }
 
 fn write_row(output: &mut String, format: Format, parsed: &Parsed, width: usize) {
