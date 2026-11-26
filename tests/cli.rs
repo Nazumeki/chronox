@@ -165,6 +165,7 @@ fn all_formats_and_negative_arguments_work() {
         "ISO datetime",
         "HTTP date",
         "Email date",
+        "Relative time",
     ] {
         assert!(stdout.contains(label), "missing {label}");
     }
@@ -180,6 +181,7 @@ fn timezone_long_and_short_options_select_output_zone() {
     for args in [
         vec!["1704164645", "--timezone", "America/New_York"],
         vec!["1704164645", "-z", "America/New_York"],
+        vec!["1704164645", "-z", "america/new_york"],
         vec!["-z=America/New_York", "1704164645"],
         vec!["1704164645", "-z", "-05:00"],
         vec!["1704164645", "-z=-0500"],
@@ -337,6 +339,13 @@ fn radix_multiple_timezones_and_list_timezones() {
             .contains("1704135845")
     );
 
+    // Multiple -z flags on a datetime translate across output zones by default.
+    let output = run(&["2024-01-02T03:04:05Z", "-z", "UTC", "-z", "Asia/Singapore"]);
+    assert!(output.status.success(), "{:?}", output.stderr);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("2024-01-02 03:04:05 +00:00"), "{stdout}");
+    assert!(stdout.contains("2024-01-02 11:04:05 +08:00"), "{stdout}");
+
     let output = run(&["--list-timezones"]);
     assert!(output.status.success(), "{:?}", output.stderr);
     let stdout = String::from_utf8(output.stdout).unwrap();
@@ -376,7 +385,16 @@ fn invalid_inputs_and_conflicting_flags_fail_cleanly() {
         vec!["0", "-a", "--to", "http"],
         vec!["now", "-a", "--to", "http"],
         vec!["now", "--unit", "s"],
+        vec!["now+2h", "--unit", "s"],
         vec!["now", "extra"],
+        vec!["--list-timezones", "1704164645"],
+        vec!["--list-timezones", "--all"],
+        vec!["--list-timezones", "--to", "seconds"],
+        vec!["--list-timezones", "--raw"],
+        vec!["--list-timezones", "-z", "UTC"],
+        vec!["--list-timezones", "--unit", "s"],
+        vec!["0x-1"],
+        vec!["--", "-0x-1"],
         vec!["--unit", "invalid", "0"],
         vec!["0", "--to", "human"],
         vec!["0", "--to", "database"],
@@ -403,4 +421,65 @@ fn help_and_version_are_available() {
                 .contains("chronox")
         );
     }
+}
+
+#[test]
+fn raw_mode_and_relative_cli_inputs_work() {
+    let output = run(&["1704164645", "-z", "UTC", "-r"]);
+    assert!(output.status.success(), "{:?}", output.stderr);
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "2024-01-02 03:04:05 +00:00\n"
+    );
+
+    let output = run(&["2024-01-02T03:04:05Z", "--raw"]);
+    assert!(output.status.success(), "{:?}", output.stderr);
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), "1704164645\n");
+
+    let output = run(&["1704164645", "-z", "UTC", "-t", "iso8601", "-r"]);
+    assert!(output.status.success(), "{:?}", output.stderr);
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "2024-01-02T03:04:05Z\n"
+    );
+
+    let output = run(&["1704164645", "-z", "UTC", "-z", "Asia/Singapore", "-r"]);
+    assert!(output.status.success(), "{:?}", output.stderr);
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "2024-01-02 03:04:05 +00:00\n2024-01-02 11:04:05 +08:00\n"
+    );
+
+    let output = run(&["now", "-t", "relative", "-r"]);
+    assert!(output.status.success(), "{:?}", output.stderr);
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), "now\n");
+
+    let output = run(&["now", "-z", "UTC", "-r"]);
+    assert!(output.status.success(), "{:?}", output.stderr);
+    let lines: Vec<&str> = std::str::from_utf8(&output.stdout)
+        .unwrap()
+        .lines()
+        .collect();
+    assert_eq!(lines.len(), 2);
+    assert!(lines[0].parse::<i64>().is_ok());
+    assert!(lines[1].ends_with("+00:00"));
+
+    let before = chrono::Utc::now().timestamp();
+    let output = run(&["now+2h", "-t", "s", "-r"]);
+    let after = chrono::Utc::now().timestamp();
+    assert!(output.status.success(), "{:?}", output.stderr);
+    let ts: i64 = String::from_utf8(output.stdout)
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    assert!(ts >= before + 7200 && ts <= after + 7200);
+
+    let output = run(&["--", "-30m"]);
+    assert!(output.status.success(), "{:?}", output.stderr);
+    assert!(
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .contains("Relative time")
+    );
 }

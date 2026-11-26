@@ -38,6 +38,21 @@ fn detects_all_timestamp_scales_without_floating_point_loss() {
             "2024-01-02T03:04:05Z",
             "Unix timestamp (s)",
         ),
+        (
+            "1_704_164_645",
+            "2024-01-02T03:04:05Z",
+            "Unix timestamp (s)",
+        ),
+        (
+            "1_704_164_645_123",
+            "2024-01-02T03:04:05.123Z",
+            "Unix timestamp (ms)",
+        ),
+        (
+            "1_704_164_645.123_456_789",
+            "2024-01-02T03:04:05.123456789Z",
+            "Unix timestamp (s)",
+        ),
     ] {
         let parsed = parse(input, None, None).unwrap();
         assert_eq!(parsed.datetime, utc(expected), "{input}");
@@ -47,29 +62,32 @@ fn detects_all_timestamp_scales_without_floating_point_loss() {
 
 #[test]
 fn radix_inputs_are_exact_seconds_by_default() {
-    assert_eq!(
-        parse("0x65937D25", None, None).unwrap().datetime,
-        utc("2024-01-02T03:04:05Z")
-    );
-    assert_eq!(
-        parse("0X65937d25", None, None).unwrap().datetime,
-        utc("2024-01-02T03:04:05Z")
-    );
-    assert_eq!(
-        parse("0b1100101100100110111110100100101", None, None)
-            .unwrap()
-            .datetime,
-        utc("2024-01-02T03:04:05Z")
-    );
+    for (input, label) in [
+        ("0x65937D25", "Hex timestamp (s)"),
+        ("0X6593_7d25", "Hex timestamp (s)"),
+        ("0x_6593_7D25", "Hex timestamp (s)"),
+        ("0o14544676445", "Octal timestamp (s)"),
+        ("0O14_544_676_445", "Octal timestamp (s)"),
+        ("0b1100101100100110111110100100101", "Binary timestamp (s)"),
+        (
+            "0B110_0101_1001_0011_0111_1101_0010_0101",
+            "Binary timestamp (s)",
+        ),
+    ] {
+        let parsed = parse(input, None, None).unwrap();
+        assert_eq!(parsed.datetime, utc("2024-01-02T03:04:05Z"), "{input}");
+        assert_eq!(parsed.format, label, "{input}");
+    }
     assert_eq!(parse("-0x1", None, None).unwrap().nanos(), -1_000_000_000);
     assert_eq!(parse("+0x1", None, None).unwrap().nanos(), 1_000_000_000);
-    assert_eq!(
-        parse("0x1", Some(Unit::Milliseconds), None)
-            .unwrap()
-            .nanos(),
-        1_000_000
-    );
-    for input in ["0x", "0xZZ", "0b2", "0x1.5", "0b"] {
+    assert_eq!(parse("0o777", None, None).unwrap().nanos(), 511_000_000_000);
+    let hex_ms = parse("0x1", Some(Unit::Milliseconds), None).unwrap();
+    assert_eq!(hex_ms.nanos(), 1_000_000);
+    assert_eq!(hex_ms.format, "Hex timestamp (ms)");
+    for input in [
+        "0x", "0x_", "0x1_", "0x1__2", "0xZZ", "0x-1", "-0x-1", "0x+1", "0o", "0o8", "0o-7", "0b",
+        "0b2", "0b-1", "0b+1", "0x1.5",
+    ] {
         assert!(parse(input, None, None).is_err(), "accepted {input:?}");
     }
 }
@@ -78,11 +96,14 @@ fn radix_inputs_are_exact_seconds_by_default() {
 fn recognizes_datetime_families_and_normalizes_offsets() {
     for input in [
         "2024-01-02T03:04:05Z",
+        "2024-01-02t03:04:05z",
         "2024-01-02T11:04:05+08:00",
         "2024-01-01T22:04:05-05:00",
         "20240102T030405Z",
+        "20240102t030405z",
         "2024-002T03:04:05Z",
         "2024-W01-2T03:04:05Z",
+        "2024-w01-2t03:04:05z",
         "2024-01-02 11:04:05+0800",
         "2024-01-02 11:04:05 +08:00",
         "2024-01-02 11:04:05+08",
@@ -103,6 +124,10 @@ fn recognizes_datetime_families_and_normalizes_offsets() {
 fn missing_timezones_use_system_local_time() {
     assert_eq!(
         parse("2024-01-02T03:04Z", None, None).unwrap().datetime,
+        utc("2024-01-02T03:04:00Z")
+    );
+    assert_eq!(
+        parse("2024-01-02t03:04z", None, None).unwrap().datetime,
         utc("2024-01-02T03:04:00Z")
     );
     assert_eq!(
@@ -223,11 +248,15 @@ fn default_output_depends_on_input_kind() {
 fn named_timezones_and_offsets_identify_the_same_instant() {
     for input in [
         "2024-01-02 11:04:05 Asia/Singapore",
+        "2024-01-02 11:04:05 asia/singapore",
         "2024-01-02T11:04:05+08:00 Asia/Singapore",
         "2024-01-02 08:49:05 Asia/Kathmandu",
         "2024-01-02 03:04:05 UTC",
+        "2024-01-02 03:04:05 utc",
         "2024-01-02 03:04:05 GMT",
+        "2024-01-02 03:04:05 gmt",
         "2024-01-01 22:04:05 America/New_York",
+        "2024-01-01 22:04:05 AMERICA/NEW_YORK",
     ] {
         assert_eq!(
             parse(input, None, None).unwrap().datetime,
@@ -399,6 +428,19 @@ fn rejects_invalid_ambiguous_and_unrepresentable_values() {
         "1.2.3",
         ".5",
         "1.",
+        "_100",
+        "100_",
+        "1__000",
+        "1_.5",
+        "1._5",
+        "___",
+        "now+",
+        "now-",
+        "nowish",
+        "+2x",
+        "+2h30",
+        "+999999999w",
+        "aaé",
         "2016-12-31T23:59:60Z",
         "9999999999999999999999999999999999999999999999",
         "0000-01-01T00:00:00Z",
@@ -408,4 +450,87 @@ fn rejects_invalid_ambiguous_and_unrepresentable_values() {
     }
     assert!(parse("2024-01-02", Some(Unit::Seconds), None).is_err());
     assert!(parse("0.1", Some(Unit::Nanoseconds), None).is_err());
+}
+
+#[test]
+fn case_insensitive_now_and_relative_offsets_work() {
+    for word in ["now", "NOW", "Now"] {
+        let before = Utc::now();
+        let parsed = parse(word, None, None).unwrap();
+        let after = Utc::now();
+        assert!(parsed.datetime >= before && parsed.datetime <= after);
+        assert_eq!(parsed.format, "Current time");
+    }
+
+    let cases = [
+        ("now+2h", 7_200_000_000_000_i128),
+        ("NOW - 30m", -1_800_000_000_000),
+        ("+1d 12h", 129_600_000_000_000),
+        ("-500ms", -500_000_000),
+        ("+1_000_000ns", 1_000_000),
+        ("+1w", 604_800_000_000_000),
+    ];
+    for (input, delta_nanos) in cases {
+        let before = Utc::now();
+        let parsed = parse(input, None, None).unwrap();
+        let after = Utc::now();
+        let before_nanos = i128::from(before.timestamp()) * 1_000_000_000
+            + i128::from(before.timestamp_subsec_nanos());
+        let after_nanos = i128::from(after.timestamp()) * 1_000_000_000
+            + i128::from(after.timestamp_subsec_nanos());
+        assert!(
+            parsed.nanos() >= before_nanos + delta_nanos
+                && parsed.nanos() <= after_nanos + delta_nanos,
+            "{input}"
+        );
+        assert_eq!(parsed.format, "Relative time");
+        assert_eq!(
+            Format::defaults_for(&parsed),
+            &[Format::Seconds, Format::Readable]
+        );
+    }
+}
+
+#[test]
+fn relative_formatting_respects_calendar_months_and_leap_years() {
+    use chronox::output::format_relative;
+
+    let base = utc("2025-01-01T00:00:00Z");
+    assert_eq!(format_relative(base, base), "now");
+    assert_eq!(
+        format_relative(utc("2024-12-31T23:59:59.000000001Z"), base),
+        "now"
+    );
+    assert_eq!(
+        format_relative(utc("2025-01-01T00:00:00.999999999Z"), base),
+        "now"
+    );
+    assert_eq!(
+        format_relative(utc("2024-12-31T23:59:59Z"), base),
+        "1 second ago"
+    );
+    assert_eq!(
+        format_relative(utc("2025-01-01T00:00:45Z"), base),
+        "in 45 seconds"
+    );
+    assert_eq!(
+        format_relative(utc("2025-01-01T02:15:09Z"), base),
+        "in 2 hours, 15 minutes"
+    );
+    assert_eq!(
+        format_relative(utc("2024-01-01T00:00:00Z"), base),
+        "1 year ago"
+    );
+    assert_eq!(
+        format_relative(utc("2024-01-31T12:00:00Z"), utc("2024-02-29T12:00:00Z")),
+        "1 month ago"
+    );
+    assert_eq!(
+        format_relative(utc("2024-01-31T12:00:00Z"), utc("2024-02-28T12:00:00Z")),
+        "28 days ago"
+    );
+    assert_eq!(
+        format_relative(utc("2024-01-31T12:00:00Z"), utc("2024-03-01T12:00:00Z")),
+        "1 month, 1 day ago"
+    );
 }

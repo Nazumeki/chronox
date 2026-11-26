@@ -3,7 +3,7 @@ use chrono_tz::Tz;
 use std::str::FromStr;
 
 /// The timezone used to interpret a wall-clock time and display an instant.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Zone {
     Local,
     Named(Tz),
@@ -45,7 +45,7 @@ impl FromStr for Zone {
                 "invalid UTC offset; use +HH:MM or -HH:MM (hours 00–23, minutes 00–59)".into(),
             );
         }
-        input.parse::<Tz>().map(Self::Named).map_err(|_| {
+        parse_iana(input).map(Self::Named).ok_or_else(|| {
             format!("unknown timezone {input:?}; use an IANA name, UTC, local, or an offset such as +08:00")
         })
     }
@@ -106,11 +106,20 @@ pub(crate) fn split_named(input: &str) -> Result<(&str, Option<Zone>), String> {
     let Some((date, name)) = input.rsplit_once(char::is_whitespace) else {
         return Ok((input, None));
     };
-    if name == "UTC" || name == "GMT" || name.contains('/') {
-        let zone = name.parse::<Tz>().map_err(|_| {
+    if name.eq_ignore_ascii_case("UTC") || name.eq_ignore_ascii_case("GMT") || name.contains('/') {
+        let zone = parse_iana(name).ok_or_else(|| {
             format!("unknown timezone {name:?}; use an IANA name such as Asia/Singapore")
         })?;
         return Ok((date.trim_end(), Some(Zone::Named(zone))));
     }
     Ok((input, None))
+}
+
+fn parse_iana(input: &str) -> Option<Tz> {
+    input.parse::<Tz>().ok().or_else(|| {
+        chrono_tz::TZ_VARIANTS
+            .iter()
+            .copied()
+            .find(|zone| zone.name().eq_ignore_ascii_case(input))
+    })
 }
