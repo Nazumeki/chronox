@@ -450,6 +450,20 @@ fn rejects_invalid_ambiguous_and_unrepresentable_values() {
     }
     assert!(parse("2024-01-02", Some(Unit::Seconds), None).is_err());
     assert!(parse("0.1", Some(Unit::Nanoseconds), None).is_err());
+    assert_eq!(
+        parse("+2024-01-02", None, None).unwrap().format,
+        "Date only"
+    );
+    assert!(
+        parse("-0001-01-01", None, None)
+            .unwrap_err()
+            .contains("outside the supported range")
+    );
+    assert!(
+        parse("+01/02/2024", None, None)
+            .unwrap_err()
+            .contains("unrecognized or invalid date")
+    );
 }
 
 #[test]
